@@ -12,9 +12,11 @@ import { toast } from 'sonner';
 export function TransactionEdit() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { transactions, updateTransaction, deleteTransaction, categories, vendorRules, addVendorRule } = useExpense();
+  const { transactions, updateTransaction, updateRecurringRule, deleteTransaction, categories, vendorRules, addVendorRule } = useExpense();
 
-  const transaction = transactions.find((t) => t.id === id);
+  // Handle virtual IDs (e.g., "123-2026-02-21") by finding the parent transaction
+  const baseId = id?.includes('-') ? id.split('-')[0] : id;
+  const transaction = transactions.find((t) => t.id === baseId);
 
   const [vendor, setVendor] = useState(transaction?.vendor || '');
   const [amount, setAmount] = useState(transaction?.amount.toString() || '');
@@ -23,6 +25,7 @@ export function TransactionEdit() {
   const [note, setNote] = useState(transaction?.note || '');
   const [isRecurring, setIsRecurring] = useState(transaction?.isRecurring || false);
   const [recurrenceType, setRecurrenceType] = useState<'weekly' | 'monthly'>(transaction?.recurrenceType || 'monthly');
+  const [endDate, setEndDate] = useState(transaction?.endDate || '');
   const [showRuleSuggestion, setShowRuleSuggestion] = useState(false);
   const [categorySource, setCategorySource] = useState<'manual' | 'rule'>('manual');
 
@@ -77,7 +80,9 @@ export function TransactionEdit() {
       return;
     }
 
-    updateTransaction(id, {
+    const updateFn = isRecurring ? updateRecurringRule : updateTransaction;
+
+    updateFn(id, {
       vendor,
       amount: parseFloat(amount),
       category: categoryId,
@@ -85,6 +90,7 @@ export function TransactionEdit() {
       note: note || undefined,
       isRecurring,
       recurrenceType: isRecurring ? recurrenceType : undefined,
+      endDate: isRecurring && endDate ? endDate : undefined,
     });
 
     if (categorySource === 'rule') {
@@ -260,6 +266,30 @@ export function TransactionEdit() {
               >
                 Monthly
               </button>
+            </div>
+          )}
+
+          {isRecurring && (
+            <div className="pt-4 border-t border-gray-100">
+              <div className="flex items-center justify-between mb-2">
+                <Label htmlFor="endDate" className="text-xs font-semibold uppercase tracking-wider text-gray-400">Optional End Date</Label>
+                {endDate && (
+                  <button
+                    type="button"
+                    onClick={() => setEndDate('')}
+                    className="text-[10px] font-bold text-red-500 uppercase tracking-tight hover:text-red-600 transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <Input
+                id="endDate"
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="h-14 rounded-2xl text-base border-gray-100 focus:border-black transition-colors"
+              />
             </div>
           )}
         </div>

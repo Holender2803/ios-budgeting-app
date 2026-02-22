@@ -8,6 +8,19 @@ export interface Transaction {
   photoUrl?: string;
   isRecurring?: boolean;
   recurrenceType?: 'weekly' | 'monthly';
+  endDate?: string; // Optional end date for recurring transactions
+  isVirtual?: boolean; // For generated occurrences
+  isActive?: boolean; // For recurring rules toggle
+  endedAt?: string; // When a rule was "deleted" (cutoff)
+  isSkipped?: boolean; // For expanded virtual occurrences
+  skipNote?: string;
+}
+
+export interface RecurringException {
+  ruleId: string;
+  date: string;
+  skipped: boolean;
+  note?: string;
 }
 
 export interface Category {

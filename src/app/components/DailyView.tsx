@@ -21,6 +21,9 @@ export function DailyView({ currentDate }: DailyViewProps) {
     dayTransactions = dayTransactions.filter(t => selectedCategoryIds.includes(t.category));
   }
 
+  // Exclude skipped items from totals
+  dayTransactions = dayTransactions.filter(t => !t.isSkipped);
+
   const totalSpent = dayTransactions.reduce((sum, t) => sum + t.amount, 0);
 
   // Group transactions by category

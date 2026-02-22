@@ -6,13 +6,18 @@ export function downloadICS(
     transactions: Transaction[],
     categories: Category[],
     filenamePrefix: string = 'Budget_Export',
-    filteredCategoryIds: string[] = []
+    filteredCategoryIds: string[] = [],
+    recurringExceptions: { ruleId: string; date: string; skipped: boolean }[] = []
 ) {
     if (transactions.length === 0) return;
 
-    // Group transactions by date
+    // Separate recurring and non-recurring
+    const recurringTransactions = transactions.filter(t => t.isRecurring && !t.isVirtual);
+    const nonRecurringTransactions = transactions.filter(t => !t.isRecurring);
+
+    // Group non-recurring transactions by date
     const groupedByDate: Record<string, Transaction[]> = {};
-    transactions.forEach((t) => {
+    nonRecurringTransactions.forEach((t) => {
         if (!groupedByDate[t.date]) {
             groupedByDate[t.date] = [];
         }
@@ -36,6 +41,60 @@ export function downloadICS(
 
     // Sort the dates descending (newest to oldest) for correct iOS native preview rendering order
     const sortedDays = Object.entries(groupedByDate).sort((a, b) => b[0].localeCompare(a[0]));
+
+    const EMOJI_MAP: Record<string, string> = {
+        'Coffee': '☕',
+        'Food & Dining': '🍔',
+        'Shopping': '🛍️',
+        'Transport': '🚗',
+        'Entertainment': '🍿',
+        'Health': '❤️',
+        'Bills': '🧾',
+        'Subscriptions': '🔄',
+        'Rent / Housing': '🏠',
+        'Groceries': '🛒',
+        'Utilities': '💡',
+    };
+
+    const dtStamp = format(new Date(), "yyyyMMdd'T'HHmmss'Z'");
+
+    // 1. Generate events for recurring transactions (RRULE)
+    recurringTransactions.forEach(t => {
+        const cat = categories.find(c => c.id === t.category);
+        const catName = cat?.name || 'Other';
+        const emoji = EMOJI_MAP[catName] || '💸';
+
+        const title = `📅 ${emoji} $${t.amount.toFixed(0)} ${t.vendor} (Recurring)`;
+        const description = `Recurring ${t.recurrenceType} expense\\nCategory: ${catName}${t.note ? `\\nNote: ${t.note}` : ''}`;
+
+        const cleanDateStart = t.date.replace(/-/g, '');
+        const startDate = parseISO(t.date);
+        const endDateDate = addDays(startDate, 1);
+        const cleanDateEnd = format(endDateDate, 'yyyyMMdd');
+
+        const rrule = `RRULE:FREQ=${t.recurrenceType === 'weekly' ? 'WEEKLY' : 'MONTHLY'}${t.endDate ? `;UNTIL=${t.endDate.replace(/-/g, '')}` : ''}`;
+
+        const eventLines = [
+            'BEGIN:VEVENT',
+            `UID:calendarspent-recurring-${t.id}@calendarspent`,
+            `DTSTAMP:${dtStamp}`,
+            `DTSTART;VALUE=DATE:${cleanDateStart}`,
+            `DTEND;VALUE=DATE:${cleanDateEnd}`,
+            `SUMMARY:${title}`,
+            `DESCRIPTION:${description}`,
+            rrule
+        ];
+
+        // Add EXDATE for skipped occurrences
+        const exceptions = recurringExceptions.filter(e => e.ruleId === t.id && e.skipped);
+        if (exceptions.length > 0) {
+            const exdates = exceptions.map(e => e.date.replace(/-/g, '')).join(',');
+            eventLines.push(`EXDATE;VALUE=DATE:${exdates}`);
+        }
+
+        eventLines.push('END:VEVENT');
+        icsContent.push(...eventLines);
+    });
 
     // Generate an event for each day
     sortedDays.forEach(([dateStr, dayTransactions]) => {
@@ -103,8 +162,6 @@ export function downloadICS(
         const startDateDate = parseISO(dateStr);
         const endDateDate = addDays(startDateDate, 1);
         const cleanDateEnd = format(endDateDate, 'yyyyMMdd');
-
-        const dtStamp = format(new Date(), "yyyyMMdd'T'HHmmss'Z'");
 
         icsContent.push(
             'BEGIN:VEVENT',
