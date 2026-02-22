@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router';
-import { ChevronRight, Bell, Calendar, Shield, Tag, ChevronLeft, Filter } from 'lucide-react';
+import { ChevronRight, Bell, Calendar, Shield, Tag, ChevronLeft, Filter, Repeat, Trash2, StopCircle } from 'lucide-react';
 import { useExpense } from '../context/ExpenseContext';
+import { format, parseISO } from 'date-fns';
 import { Switch } from '../components/ui/switch';
 import { BottomNav } from '../components/BottomNav';
 import { motion } from 'motion/react';
@@ -8,7 +9,9 @@ import { toast } from 'sonner';
 
 export function Settings() {
   const navigate = useNavigate();
-  const { settings, updateSettings, categories, getCategoryById } = useExpense();
+  const { settings, updateSettings, categories, getCategoryById, transactions, stopRecurringRule } = useExpense();
+
+  const activeRecurringRules = transactions.filter(t => t.isRecurring && t.isActive !== false);
 
   const clearDefaultFilter = () => {
     updateSettings({ defaultCategoryFilter: undefined });
@@ -33,6 +36,13 @@ export function Settings() {
       value: settings.googleCalendarSync,
       onChange: (value: boolean) => updateSettings({ googleCalendarSync: value }),
       type: 'toggle' as const,
+    },
+    {
+      icon: Repeat,
+      label: 'Recurring Payments',
+      description: 'Manage subscriptions & bills',
+      type: 'link' as const,
+      path: '/settings/recurring',
     },
     {
       icon: Tag,
@@ -120,6 +130,7 @@ export function Settings() {
           })}
         </div>
 
+
         {/* Default Category Filter */}
         {settings.defaultCategoryFilter && settings.defaultCategoryFilter.length > 0 && (
           <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4">
@@ -140,7 +151,7 @@ export function Settings() {
         <div className="bg-green-50 border border-green-100 rounded-2xl p-4">
           <h3 className="font-medium text-green-900 mb-2">Your Privacy Matters</h3>
           <p className="text-sm text-green-700 leading-relaxed">
-            All your expense data is stored locally on your device. We don't collect, store, 
+            All your expense data is stored locally on your device. We don't collect, store,
             or share any of your financial information.
           </p>
         </div>

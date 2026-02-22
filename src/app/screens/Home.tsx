@@ -15,7 +15,7 @@ type TimeView = 'daily' | 'weekly' | 'monthly';
 
 export function Home() {
   const navigate = useNavigate();
-  const { transactions, categories, selectedCategoryIds } = useExpense();
+  const { transactions, categories, selectedCategoryIds, recurringExceptions } = useExpense();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [timeView, setTimeView] = useState<TimeView>('monthly');
   const [includeRecurring, setIncludeRecurring] = useState(false);
@@ -80,6 +80,9 @@ export function Home() {
       );
     }
 
+    // Exclude skipped items from totals
+    filteredTransactions = filteredTransactions.filter(t => !t.isSkipped);
+
     return filteredTransactions;
   };
 
@@ -89,11 +92,13 @@ export function Home() {
   // Get display text for current period
   const getPeriodText = () => {
     if (timeView === 'daily') {
-      return isToday(currentDate) ? 'today' : format(currentDate, 'MMM d');
+      return isToday(currentDate) ? 'today' : format(currentDate, 'MMM d, yyyy');
     } else if (timeView === 'weekly') {
-      return 'this week';
+      const weekStart = startOfWeek(currentDate);
+      const weekEnd = endOfWeek(currentDate);
+      return `${format(weekStart, 'MMM d')} – ${format(weekEnd, 'MMM d, yyyy')}`;
     } else {
-      return 'this month';
+      return format(currentDate, 'MMMM yyyy');
     }
   };
 
@@ -193,7 +198,7 @@ export function Home() {
                 </button>
 
                 <button
-                  onClick={() => downloadICS(currentFilteredTransactions, categories, `Budget_${timeView}_Export`, selectedCategoryIds)}
+                  onClick={() => downloadICS(currentFilteredTransactions, categories, `Budget_${timeView}_Export`, selectedCategoryIds, recurringExceptions)}
                   className="p-2 hover:bg-blue-50 hover:text-blue-600 rounded-full transition-colors text-gray-400"
                   aria-label="Export to Calendar"
                   title="Export to Calendar"

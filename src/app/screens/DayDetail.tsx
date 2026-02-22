@@ -9,7 +9,7 @@ import { downloadICS } from '../utils/icsExport';
 export function DayDetail() {
   const { date } = useParams<{ date: string }>();
   const navigate = useNavigate();
-  const { transactions, categories, getCategoryById } = useExpense();
+  const { transactions, categories, getCategoryById, recurringExceptions } = useExpense();
 
   if (!date) {
     navigate('/');
@@ -49,7 +49,7 @@ export function DayDetail() {
             <div className="flex flex-col items-end">
               <div className="flex items-center gap-1">
                 <button
-                  onClick={() => downloadICS(dayTransactions, categories, `Budget_Daily_${format(parsedDate, 'yyyyMMdd')}`, [])}
+                  onClick={() => downloadICS(dayTransactions, categories, `Budget_Daily_${format(parsedDate, 'yyyyMMdd')}`, [], recurringExceptions)}
                   className="p-2 hover:bg-blue-50 hover:text-blue-600 rounded-full transition-colors text-gray-400"
                   aria-label="Export to Calendar"
                   title="Export to Calendar"

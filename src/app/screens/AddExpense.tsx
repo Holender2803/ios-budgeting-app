@@ -24,6 +24,7 @@ export function AddExpense() {
   const [note, setNote] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState<'weekly' | 'monthly'>('monthly');
+  const [endDate, setEndDate] = useState('');
   const [showRuleSuggestion, setShowRuleSuggestion] = useState(false);
   const [categorySource, setCategorySource] = useState<'manual' | 'rule'>('manual');
 
@@ -76,6 +77,7 @@ export function AddExpense() {
       note: note || undefined,
       isRecurring,
       recurrenceType: isRecurring ? recurrenceType : undefined,
+      endDate: isRecurring && endDate ? endDate : undefined,
     });
 
     if (categorySource === 'rule') {
@@ -237,6 +239,30 @@ export function AddExpense() {
               >
                 Monthly
               </button>
+            </div>
+          )}
+
+          {isRecurring && (
+            <div className="pt-4 border-t border-gray-100">
+              <div className="flex items-center justify-between mb-2">
+                <Label htmlFor="endDate" className="text-xs font-semibold uppercase tracking-wider text-gray-400">Optional End Date</Label>
+                {endDate && (
+                  <button
+                    type="button"
+                    onClick={() => setEndDate('')}
+                    className="text-[10px] font-bold text-red-500 uppercase tracking-tight hover:text-red-600 transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <Input
+                id="endDate"
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="h-14 rounded-2xl text-base border-gray-100 focus:border-black transition-colors"
+              />
             </div>
           )}
         </div>

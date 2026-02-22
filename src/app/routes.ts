@@ -36,4 +36,18 @@ export const router = createBrowserRouter([
     path: '/transaction/:id',
     Component: TransactionEdit,
   },
+  {
+    path: '/settings/recurring',
+    async lazy() {
+      const { RecurringRules } = await import('./screens/RecurringRules');
+      return { Component: RecurringRules };
+    },
+  },
+  {
+    path: '/settings/recurring/:id',
+    async lazy() {
+      const { RuleDetail } = await import('./screens/RuleDetail');
+      return { Component: RuleDetail };
+    },
+  },
 ]);
