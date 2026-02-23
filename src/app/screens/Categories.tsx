@@ -3,14 +3,14 @@ import { useNavigate } from 'react-router';
 import { ChevronLeft, Plus, Edit2, Trash2 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { Category } from '../types';
-import { useExpense } from '../context/ExpenseContext';
-import { motion } from 'motion/react';
+import { useExpense, CANONICAL_GROUPS, normalizeLabel, getCategoryError } from '../context/ExpenseContext';
+import { motion, AnimatePresence } from 'motion/react';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 
 export function Categories() {
   const navigate = useNavigate();
-  const { categories, vendorRules, addVendorRule, deleteVendorRule, getCategoryById, addCategory, updateCategory } = useExpense();
+  const { categories, vendorRules, addVendorRule, deleteVendorRule, getCategoryById, addCategory, updateCategory, deleteCategory } = useExpense();
 
   const [showAddRule, setShowAddRule] = useState(false);
   const [vendor, setVendor] = useState('');
@@ -24,7 +24,10 @@ export function Categories() {
   const [editName, setEditName] = useState('');
   const [editGroup, setEditGroup] = useState('');
 
-  const groups = ['Everyday', 'Home & Life', 'Getting Around', 'Health & Growth', 'Money Matters', 'Giving'];
+  const newCategoryError = getCategoryError(newCategoryName, categories);
+  const editCategoryError = editingCategory ? getCategoryError(editName, categories, editingCategory.id) : null;
+
+
 
   const startEditing = (category: Category) => {
     setEditingCategory(category);
@@ -121,15 +124,20 @@ export function Categories() {
                   placeholder="e.g., Subscriptions"
                   value={newCategoryName}
                   onChange={(e) => setNewCategoryName(e.target.value)}
-                  className="h-12 rounded-xl"
+                  className={`h-12 rounded-xl ${newCategoryError ? 'border-red-500 focus-visible:ring-red-500/20' : ''}`}
                   autoFocus
                 />
+                {newCategoryError && newCategoryName.trim() !== '' && (
+                  <p className="text-[10px] font-bold text-red-500 uppercase tracking-tight ml-1">
+                    {newCategoryError}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
                 <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Select Group</Label>
-                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-                  {groups.map(g => (
+                <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+                  {CANONICAL_GROUPS.map(g => (
                     <button
                       key={g}
                       onClick={() => setNewCategoryGroup(g)}
@@ -153,8 +161,8 @@ export function Categories() {
                 </button>
                 <button
                   onClick={handleAddCategory}
-                  disabled={!newCategoryName.trim()}
-                  className="flex-1 h-12 bg-blue-500 text-white rounded-xl text-xs font-bold uppercase disabled:bg-gray-200 shadow-lg shadow-blue-100 transition-all"
+                  disabled={!!newCategoryError}
+                  className="flex-1 h-12 bg-blue-500 text-white rounded-xl text-xs font-bold uppercase disabled:bg-gray-100 disabled:text-gray-400 shadow-lg shadow-blue-100 transition-all"
                 >
                   Add Category
                 </button>
@@ -162,61 +170,92 @@ export function Categories() {
             </motion.div>
           )}
 
-          {/* Edit Category Form */}
-          {editingCategory && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="bg-white rounded-2xl p-4 shadow-sm space-y-4 mb-4 border border-blue-500/20"
-            >
-              <div className="space-y-2">
-                <Label htmlFor="edit-name" className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Edit Name</Label>
-                <Input
-                  id="edit-name"
-                  type="text"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="h-12 rounded-xl"
-                  autoFocus
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Edit Group</Label>
-                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-                  {groups.map(g => (
-                    <button
-                      key={g}
-                      onClick={() => setEditGroup(g)}
-                      className={`px-3 py-1.5 rounded-full text-[10px] font-bold whitespace-nowrap transition-all ${editGroup === g
-                        ? 'bg-blue-500 text-white shadow-sm'
-                        : 'bg-gray-50 text-gray-500 border border-gray-100'
-                        }`}
-                    >
-                      {g}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                <button
+          {/* Edit Category Modal */}
+          <AnimatePresence>
+            {editingCategory && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
                   onClick={() => setEditingCategory(null)}
-                  className="flex-1 h-12 text-xs font-bold text-gray-400 uppercase"
+                  className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+                />
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                  className="relative w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl space-y-4"
                 >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleUpdateCategory}
-                  disabled={!editName.trim()}
-                  className="flex-1 h-12 bg-blue-500 text-white rounded-xl text-xs font-bold uppercase shadow-lg shadow-blue-100"
-                >
-                  Save Changes
-                </button>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-name" className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Edit Name</Label>
+                    <Input
+                      id="edit-name"
+                      type="text"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className={`h-12 rounded-xl ${editCategoryError ? 'border-red-500 focus-visible:ring-red-500/20' : ''}`}
+                      autoFocus
+                    />
+                    {editCategoryError && editName.trim() !== '' && (
+                      <p className="text-[10px] font-bold text-red-500 uppercase tracking-tight ml-1">
+                        {editCategoryError}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Edit Group</Label>
+                    <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+                      {CANONICAL_GROUPS.map(g => (
+                        <button
+                          key={g}
+                          onClick={() => setEditGroup(g)}
+                          className={`px-3 py-1.5 rounded-full text-[10px] font-bold whitespace-nowrap transition-all ${editGroup === g
+                            ? 'bg-blue-500 text-white shadow-sm'
+                            : 'bg-gray-50 text-gray-500 border border-gray-100'
+                            }`}
+                        >
+                          {g}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2 pt-2">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setEditingCategory(null)}
+                        className="flex-1 h-12 text-xs font-bold text-gray-400 uppercase"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleUpdateCategory}
+                        disabled={!!editCategoryError}
+                        className="flex-1 h-12 bg-blue-500 text-white rounded-xl text-xs font-bold uppercase disabled:bg-gray-100 disabled:text-gray-400 shadow-lg shadow-blue-100"
+                      >
+                        Save Changes
+                      </button>
+                    </div>
+
+                    {editingCategory.id.startsWith('custom-') && (
+                      <button
+                        onClick={() => {
+                          deleteCategory(editingCategory.id);
+                          setEditingCategory(null);
+                        }}
+                        className="w-full h-12 flex items-center justify-center gap-2 text-red-500 text-xs font-bold uppercase hover:bg-red-50 rounded-xl transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Delete Category
+                      </button>
+                    )}
+                  </div>
+                </motion.div>
               </div>
-            </motion.div>
-          )}
+            )}
+          </AnimatePresence>
 
           <div className="space-y-6">
             {Object.entries(
