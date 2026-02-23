@@ -6,9 +6,10 @@ import { useExpense } from '../../context/ExpenseContext';
 interface SmartSuggestionProps {
     vendor: string;
     onSelect: (categoryId: string) => void;
+    selectedCategoryId: string;
 }
 
-export function SmartSuggestion({ vendor, onSelect }: SmartSuggestionProps) {
+export function SmartSuggestion({ vendor, onSelect, selectedCategoryId }: SmartSuggestionProps) {
     const { categories, getSuggestedCategory } = useExpense();
 
     const suggestedCategoryId = getSuggestedCategory(vendor);
@@ -49,9 +50,20 @@ export function SmartSuggestion({ vendor, onSelect }: SmartSuggestionProps) {
 
                     <button
                         onClick={() => onSelect(suggestion.id)}
-                        className="bg-blue-500 text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-xl hover:bg-blue-600 transition-colors shadow-sm active:scale-95"
+                        disabled={suggestedCategoryId === selectedCategoryId}
+                        className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-xl transition-all shadow-sm active:scale-95 ${suggestedCategoryId === selectedCategoryId
+                            ? 'bg-blue-100 text-blue-500 cursor-default flex items-center gap-1.5'
+                            : 'bg-blue-500 text-white hover:bg-blue-600'
+                            }`}
                     >
-                        Apply
+                        {suggestedCategoryId === selectedCategoryId ? (
+                            <>
+                                <LucideIcons.Check className="w-3 h-3" />
+                                Applied
+                            </>
+                        ) : (
+                            'Apply'
+                        )}
                     </button>
                 </div>
             </motion.div>

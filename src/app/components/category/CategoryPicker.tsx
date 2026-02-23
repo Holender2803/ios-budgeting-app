@@ -30,6 +30,7 @@ export function CategoryPicker({
             <SmartSuggestion
                 vendor={vendor}
                 onSelect={(id) => onSelect(id, 'suggestion')}
+                selectedCategoryId={selectedCategoryId}
             />
 
             {/* Tier 2 & 3: Recents and Full Picker */}

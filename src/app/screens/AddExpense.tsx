@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { ChevronLeft, Camera } from 'lucide-react';
 import { useExpense } from '../context/ExpenseContext';
@@ -12,7 +12,8 @@ import { toast } from 'sonner';
 
 export function AddExpense() {
   const navigate = useNavigate();
-  const { addTransaction, categories, addVendorRule } = useExpense();
+  const { transactions, addTransaction, categories, addVendorRule, getSuggestedCategory } = useExpense();
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const [amount, setAmount] = useState('');
   const [vendor, setVendor] = useState('');
@@ -23,17 +24,69 @@ export function AddExpense() {
   const [recurrenceType, setRecurrenceType] = useState<'weekly' | 'monthly'>('monthly');
   const [endDate, setEndDate] = useState('');
   const [categorySource, setCategorySource] = useState<'manual' | 'suggestion'>('manual');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [userTouchedCategory, setUserTouchedCategory] = useState(false);
+
+  // Get distinct vendors sorted by most recent first
+  const recentVendors = useMemo(() => {
+    const vendors = new Map<string, Date>();
+
+    // Sort transactions by date descending to get most recent first
+    [...transactions]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .forEach(t => {
+        if (!vendors.has(t.vendor)) {
+          vendors.set(t.vendor, new Date(t.date));
+        }
+      });
+
+    return Array.from(vendors.keys());
+  }, [transactions]);
+
+  const filteredSuggestions = useMemo(() => {
+    if (!vendor.trim()) return [];
+    return recentVendors
+      .filter(v => v.toLowerCase().includes(vendor.toLowerCase()) && v.toLowerCase() !== vendor.toLowerCase())
+      .slice(0, 5);
+  }, [vendor, recentVendors]);
+
+  // Auto-apply suggested category
+  useEffect(() => {
+    if (userTouchedCategory) return;
+
+    const suggestion = getSuggestedCategory(vendor);
+    if (suggestion && suggestion !== categoryId) {
+      setCategoryId(suggestion);
+      setCategorySource('suggestion');
+    }
+  }, [vendor, getSuggestedCategory, categoryId, userTouchedCategory]);
+
+  // Ensure page is scrolled to top on mount
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
 
   const handleVendorChange = (newVendor: string) => {
     setVendor(newVendor);
     if (!newVendor.trim()) {
       setCategorySource('manual');
+      setShowSuggestions(false);
+    } else {
+      setShowSuggestions(true);
     }
   };
 
-  const handleCategorySelect = (id: string, source: 'manual' | 'suggestion') => {
+  const handleSelectSuggestion = (suggestion: string) => {
+    setVendor(suggestion);
+    setShowSuggestions(false);
+  };
+
+  const handleCategorySelect = (id: string, source: 'manual' | 'suggestion' = 'manual') => {
     setCategoryId(id);
     setCategorySource(source);
+    if (source === 'manual') {
+      setUserTouchedCategory(true);
+    }
     if (source === 'suggestion') {
       toast.success('✨ Category applied', { duration: 1500 });
     }
@@ -98,7 +151,7 @@ export function AddExpense() {
         className="max-w-lg mx-auto px-4 py-6 space-y-6"
       >
         {/* Vendor */}
-        <div className="space-y-2">
+        <div className="space-y-2 relative" ref={dropdownRef}>
           <Label htmlFor="vendor">Vendor</Label>
           <Input
             id="vendor"
@@ -106,8 +159,36 @@ export function AddExpense() {
             placeholder="Where did you spend?"
             value={vendor}
             onChange={(e) => handleVendorChange(e.target.value)}
+            onFocus={() => vendor.trim() && setShowSuggestions(true)}
+            onBlur={() => {
+              // Delay to allow clicking on suggestion
+              setTimeout(() => setShowSuggestions(false), 200);
+            }}
             className="h-14 rounded-2xl text-base shadow-sm border-gray-100 focus:border-blue-500 transition-all"
+            autoComplete="off"
           />
+
+          <AnimatePresence>
+            {showSuggestions && filteredSuggestions.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden"
+              >
+                {filteredSuggestions.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    onClick={() => handleSelectSuggestion(suggestion)}
+                    className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors flex items-center justify-between group"
+                  >
+                    <span className="text-gray-700 font-medium">{suggestion}</span>
+                    <ChevronLeft className="w-4 h-4 text-gray-300 group-hover:text-blue-400 rotate-180" />
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Amount */}
