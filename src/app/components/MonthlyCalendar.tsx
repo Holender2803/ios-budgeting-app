@@ -1,14 +1,15 @@
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, startOfWeek, endOfWeek, eachWeekOfInterval } from 'date-fns';
 import { useExpense } from '../context/ExpenseContext';
+import { Transaction } from '../types';
 import { motion } from 'motion/react';
 
 interface MonthlyCalendarProps {
   currentDate: Date;
   onDayClick: (date: string) => void;
+  transactions: Transaction[];
 }
 
-export function MonthlyCalendar({ currentDate, onDayClick }: MonthlyCalendarProps) {
-  const { transactions, selectedCategoryIds } = useExpense();
+export function MonthlyCalendar({ currentDate, onDayClick, transactions }: MonthlyCalendarProps) {
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
@@ -20,13 +21,7 @@ export function MonthlyCalendar({ currentDate, onDayClick }: MonthlyCalendarProp
 
   const getDayData = (date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd');
-    let dayTransactions = transactions.filter(t => t.date === dateStr);
-
-    // Filter by selected categories if any are selected
-    if (selectedCategoryIds.length > 0) {
-      dayTransactions = dayTransactions.filter(t => selectedCategoryIds.includes(t.category));
-    }
-
+    const dayTransactions = transactions.filter(t => t.date === dateStr);
     const total = dayTransactions.reduce((sum, t) => sum + t.amount, 0);
 
     return { total, count: dayTransactions.length };
@@ -34,17 +29,10 @@ export function MonthlyCalendar({ currentDate, onDayClick }: MonthlyCalendarProp
 
   const getWeekTotal = (weekStart: Date) => {
     const weekEnd = endOfWeek(weekStart);
-    const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
-
-    let weekTransactions = transactions.filter(t => {
+    const weekTransactions = transactions.filter(t => {
       const tDate = new Date(t.date + 'T00:00:00');
       return tDate >= weekStart && tDate <= weekEnd;
     });
-
-    // Filter by selected categories if any are selected
-    if (selectedCategoryIds.length > 0) {
-      weekTransactions = weekTransactions.filter(t => selectedCategoryIds.includes(t.category));
-    }
 
     return weekTransactions.reduce((sum, t) => sum + t.amount, 0);
   };

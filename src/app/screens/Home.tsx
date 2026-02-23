@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router';
-import { format, addMonths, subMonths, startOfMonth, endOfMonth, addDays, subDays, startOfWeek, endOfWeek, addWeeks, subWeeks, isToday } from 'date-fns';
+import { format, addMonths, subMonths, startOfMonth, endOfMonth, addDays, subDays, startOfWeek, endOfWeek, addWeeks, subWeeks, isToday, startOfDay, endOfDay } from 'date-fns';
 import { MonthlyCalendar } from '../components/MonthlyCalendar';
 import { WeeklyCalendar } from '../components/WeeklyCalendar';
 import { DailyView } from '../components/DailyView';
@@ -15,10 +15,9 @@ type TimeView = 'daily' | 'weekly' | 'monthly';
 
 export function Home() {
   const navigate = useNavigate();
-  const { transactions, categories, selectedCategoryIds, recurringExceptions } = useExpense();
+  const { transactions, categories, selectedCategoryIds, recurringExceptions, includeRecurring, setIncludeRecurring, filteredTransactions: allFilteredTransactions } = useExpense();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [timeView, setTimeView] = useState<TimeView>('monthly');
-  const [includeRecurring, setIncludeRecurring] = useState(false);
 
   // Navigation handlers
   const handlePrev = () => {
@@ -45,58 +44,32 @@ export function Home() {
     navigate(`/day/${date}`);
   };
 
-  // Calculate totals based on current view
-  const getCurrentFilteredTransactions = () => {
-    let filteredTransactions = transactions;
-
+  // Pipeline Phase 3 & 4: Range Derivation & Filtering
+  const { rangeStart, rangeEnd } = useMemo(() => {
     if (timeView === 'daily') {
-      const dateStr = format(currentDate, 'yyyy-MM-dd');
-      filteredTransactions = transactions.filter(t => t.date === dateStr);
+      return { rangeStart: startOfDay(currentDate), rangeEnd: endOfDay(currentDate) };
     } else if (timeView === 'weekly') {
-      const weekStart = startOfWeek(currentDate);
-      const weekEnd = endOfWeek(currentDate);
-      filteredTransactions = transactions.filter(t => {
-        const tDate = new Date(t.date + 'T00:00:00');
-        return tDate >= weekStart && tDate <= weekEnd;
-      });
+      return { rangeStart: startOfWeek(currentDate), rangeEnd: endOfWeek(currentDate) };
     } else {
-      const monthStart = startOfMonth(currentDate);
-      const monthEnd = endOfMonth(currentDate);
-      filteredTransactions = transactions.filter(t => {
-        const tDate = new Date(t.date + 'T00:00:00');
-        return tDate >= monthStart && tDate <= monthEnd;
-      });
+      return { rangeStart: startOfMonth(currentDate), rangeEnd: endOfMonth(currentDate) };
     }
+  }, [currentDate, timeView]);
 
-    // Apply recurring expense filter natively, except on the Daily view which always shows them
-    if (timeView !== 'daily' && !includeRecurring) {
-      filteredTransactions = filteredTransactions.filter(t => !t.isRecurring);
-    }
+  const rangeTransactions = useMemo(() => {
+    return allFilteredTransactions.filter(t => {
+      const tDate = new Date(t.date + 'T00:00:00');
+      return tDate >= rangeStart && tDate <= rangeEnd;
+    });
+  }, [allFilteredTransactions, rangeStart, rangeEnd]);
 
-    // Apply category filter
-    if (selectedCategoryIds.length > 0) {
-      filteredTransactions = filteredTransactions.filter(t =>
-        selectedCategoryIds.includes(t.category)
-      );
-    }
-
-    // Exclude skipped items from totals
-    filteredTransactions = filteredTransactions.filter(t => !t.isSkipped);
-
-    return filteredTransactions;
-  };
-
-  const currentFilteredTransactions = getCurrentFilteredTransactions();
-  const currentTotal = currentFilteredTransactions.reduce((sum: number, t: any) => sum + t.amount, 0);
+  const currentTotal = rangeTransactions.reduce((sum: number, t: any) => sum + t.amount, 0);
 
   // Get display text for current period
   const getPeriodText = () => {
     if (timeView === 'daily') {
       return isToday(currentDate) ? 'today' : format(currentDate, 'MMM d, yyyy');
     } else if (timeView === 'weekly') {
-      const weekStart = startOfWeek(currentDate);
-      const weekEnd = endOfWeek(currentDate);
-      return `${format(weekStart, 'MMM d')} – ${format(weekEnd, 'MMM d, yyyy')}`;
+      return `${format(rangeStart, 'MMM d')} – ${format(rangeEnd, 'MMM d, yyyy')}`;
     } else {
       return format(currentDate, 'MMMM yyyy');
     }
@@ -198,7 +171,7 @@ export function Home() {
                 </button>
 
                 <button
-                  onClick={() => downloadICS(currentFilteredTransactions, categories, `Budget_${timeView}_Export`, selectedCategoryIds, recurringExceptions)}
+                  onClick={() => downloadICS(rangeTransactions, categories, `Budget_${timeView}_Export`, selectedCategoryIds, recurringExceptions)}
                   className="p-2 hover:bg-blue-50 hover:text-blue-600 rounded-full transition-colors text-gray-400"
                   aria-label="Export to Calendar"
                   title="Export to Calendar"
@@ -227,16 +200,27 @@ export function Home() {
       >
         {timeView === 'monthly' && (
           <div className="bg-white">
-            <MonthlyCalendar currentDate={currentDate} onDayClick={handleDayClick} />
+            <MonthlyCalendar
+              currentDate={currentDate}
+              onDayClick={handleDayClick}
+              transactions={allFilteredTransactions}
+            />
           </div>
         )}
 
         {timeView === 'weekly' && (
-          <WeeklyCalendar currentDate={currentDate} onDayClick={handleDayClick} />
+          <WeeklyCalendar
+            currentDate={currentDate}
+            onDayClick={handleDayClick}
+            transactions={rangeTransactions}
+          />
         )}
 
         {timeView === 'daily' && (
-          <DailyView currentDate={currentDate} />
+          <DailyView
+            currentDate={currentDate}
+            transactions={rangeTransactions}
+          />
         )}
       </motion.div>
 

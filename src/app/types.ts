@@ -33,8 +33,10 @@ export interface Category {
 
 export interface VendorRule {
   id: string;
-  vendor: string;
+  vendorContains: string; // Changed from 'vendor' to be more descriptive
   categoryId: string;
+  source: 'default' | 'user';
+  createdAt: number;
 }
 
 export type ViewMode = 'daily' | 'weekly' | 'monthly';
