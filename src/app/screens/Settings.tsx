@@ -3,13 +3,33 @@ import { ChevronRight, Bell, Calendar, Shield, Tag, ChevronLeft, Filter, Repeat,
 import { useExpense } from '../context/ExpenseContext';
 import { format, parseISO } from 'date-fns';
 import { Switch } from '../components/ui/switch';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "../components/ui/alert-dialog";
 import { BottomNav } from '../components/BottomNav';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 
 export function Settings() {
   const navigate = useNavigate();
-  const { settings, updateSettings, categories, getCategoryById, transactions, stopRecurringRule } = useExpense();
+  const {
+    settings,
+    updateSettings,
+    categories,
+    getCategoryById,
+    transactions,
+    stopRecurringRule,
+    exportBackup,
+    importBackup,
+    clearAllData
+  } = useExpense();
 
   const activeRecurringRules = transactions.filter(t => t.isRecurring && t.isActive !== false);
 
@@ -148,6 +168,100 @@ export function Settings() {
               </button>
             </div>
           )}
+
+          {/* Backup & Restore */}
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+            <h3 className="font-medium text-gray-900 mb-4 px-2">Backup & Restore</h3>
+            <div className="space-y-2">
+              <button
+                onClick={exportBackup}
+                className="w-full bg-gray-50 hover:bg-gray-100 rounded-xl p-4 flex items-center justify-between transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                    <Tag className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-medium text-gray-900 text-sm">Export data</p>
+                    <p className="text-xs text-gray-500">Download a backup file</p>
+                  </div>
+                </div>
+              </button>
+
+              <div className="relative">
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = async (event) => {
+                      const content = event.target?.result;
+                      if (typeof content === 'string') {
+                        await importBackup(content);
+                      }
+                      // Reset value so the same file can be selected again
+                      if (e.target) e.target.value = '';
+                    };
+                    reader.readAsText(file);
+                  }}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+                <button
+                  className="w-full bg-gray-50 hover:bg-gray-100 rounded-xl p-4 flex items-center justify-between transition-colors pointer-events-none"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                      <Tag className="w-4 h-4 text-green-600" />
+                    </div>
+                    <div className="text-left">
+                      <p className="font-medium text-gray-900 text-sm">Import data</p>
+                      <p className="text-xs text-gray-500">Restore from a backup file</p>
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <button className="w-full bg-red-50 hover:bg-red-100 rounded-xl p-4 flex items-center justify-between transition-colors mt-4 border border-red-100">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
+                        <Trash2 className="w-4 h-4 text-red-600" />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-medium text-red-700 text-sm">Clear local data</p>
+                        <p className="text-xs text-red-500">Delete all data on this device</p>
+                      </div>
+                    </div>
+                  </button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="w-[calc(100%-2rem)] max-w-sm rounded-2xl p-6">
+                  <AlertDialogHeader className="text-left space-y-3">
+                    <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-2 mx-auto">
+                      <Trash2 className="w-6 h-6 text-red-600" />
+                    </div>
+                    <AlertDialogTitle className="text-xl text-center">Delete all data?</AlertDialogTitle>
+                    <AlertDialogDescription className="text-base text-center">
+                      This will delete all local data on this device. This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <div className="flex gap-3 mt-8">
+                    <AlertDialogCancel className="w-1/2 flex-1 rounded-xl h-12 m-0 bg-gray-100 hover:bg-gray-200 border-0 font-medium text-gray-900">
+                      Cancel
+                    </AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => clearAllData()}
+                      className="w-1/2 flex-1 rounded-xl h-12 m-0 bg-red-600 hover:bg-red-700 font-medium text-white shadow-none"
+                    >
+                      Delete
+                    </AlertDialogAction>
+                  </div>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </div>
 
           {/* Privacy Notice */}
           <div className="bg-green-50 border border-green-100 rounded-2xl p-4">

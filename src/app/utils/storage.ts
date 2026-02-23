@@ -76,4 +76,29 @@ export const storage = {
             request.onerror = () => reject(request.error);
         });
     },
+
+    async clearAll(): Promise<void> {
+        const db = await this.init();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(STORES, 'readwrite');
+            let completed = 0;
+            let hasError = false;
+
+            STORES.forEach(storeName => {
+                const store = transaction.objectStore(storeName);
+                const request = store.clear();
+
+                request.onsuccess = () => {
+                    completed++;
+                    if (!hasError && completed === STORES.length) {
+                        resolve();
+                    }
+                };
+                request.onerror = () => {
+                    hasError = true;
+                    reject(request.error);
+                };
+            });
+        });
+    },
 };
