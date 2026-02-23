@@ -33,6 +33,9 @@ interface ExpenseContextType {
   includeRecurring: boolean;
   setIncludeRecurring: (value: boolean) => void;
   filteredTransactions: Transaction[];
+  exportBackup: () => void;
+  importBackup: (jsonString: string) => Promise<void>;
+  clearAllData: () => Promise<void>;
 }
 
 const ExpenseContext = createContext<ExpenseContextType | undefined>(undefined);
@@ -721,7 +724,113 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const exportBackup = () => {
+    try {
+      const backupData = {
+        version: "1",
+        exportedAt: new Date().toISOString(),
+        expenses: transactions,
+        categories,
+        vendorRules,
+        settings,
+        recurringExceptions
+      };
 
+      const jsonString = JSON.stringify(backupData, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+
+      const dateStr = format(new Date(), 'yyyy-MM-dd');
+      link.href = url;
+      link.download = `calendarspent-backup-${dateStr}.json`;
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success('Backup exported successfully');
+    } catch (error) {
+      console.error('Export failed:', error);
+      toast.error('Failed to export backup');
+    }
+  };
+
+  const importBackup = async (jsonString: string) => {
+    try {
+      const parsed = JSON.parse(jsonString);
+
+      // Basic validation
+      if (!parsed.version || !Array.isArray(parsed.expenses)) {
+        throw new Error('Invalid backup file format');
+      }
+
+      // Clear all existing data from DB
+      await storage.clearAll();
+
+      // Also clear legacy localStorage keys just in case
+      localStorage.removeItem('transactions');
+      localStorage.removeItem('categories');
+      localStorage.removeItem('vendorRules');
+      localStorage.removeItem('settings');
+      localStorage.removeItem('recurringExceptions');
+
+      const restoredTransactions = parsed.expenses || [];
+      const restoredCategories = parsed.categories || DEFAULT_CATEGORIES;
+      const restoredRules = parsed.vendorRules || [];
+      const restoredSettings = parsed.settings || DEFAULT_SETTINGS;
+      const restoredExceptions = parsed.recurringExceptions || [];
+
+      // Update state (this will trigger the useEffect syncs to write to DB)
+      setTransactions(restoredTransactions);
+      setCategories(restoredCategories);
+      setVendorRules(restoredRules);
+      setSettings(restoredSettings);
+      setRecurringExceptions(restoredExceptions);
+
+      if (restoredSettings.defaultCategoryFilter) {
+        setSelectedCategoryIds(restoredSettings.defaultCategoryFilter);
+      } else {
+        setSelectedCategoryIds([]);
+      }
+
+      toast.success('Backup imported successfully');
+    } catch (error) {
+      console.error('Import failed:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to import backup. Invalid file.');
+    }
+  };
+
+  const clearAllData = async () => {
+    try {
+      // Clear all existing data from DB
+      await storage.clearAll();
+
+      // Clear legacy localStorage keys
+      localStorage.removeItem('transactions');
+      localStorage.removeItem('categories');
+      localStorage.removeItem('vendorRules');
+      localStorage.removeItem('settings');
+      localStorage.removeItem('recurringExceptions');
+      localStorage.removeItem('indexeddb_migrated');
+      localStorage.removeItem('category_schema_v1');
+
+      // Reset state
+      setTransactions([]);
+      setCategories(DEFAULT_CATEGORIES);
+      setVendorRules([]);
+      setSettings(DEFAULT_SETTINGS);
+      setRecurringExceptions([]);
+      setSelectedCategoryIds([]);
+      setIncludeRecurring(false);
+
+      toast.success('All local data cleared');
+    } catch (error) {
+      console.error('Clear data failed:', error);
+      toast.error('Failed to clear data');
+    }
+  };
 
   if (!isHydrated) {
     return (
@@ -761,6 +870,9 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
         includeRecurring,
         setIncludeRecurring,
         filteredTransactions,
+        exportBackup,
+        importBackup,
+        clearAllData,
       }}
     >
       {children}
