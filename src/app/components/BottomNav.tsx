@@ -8,13 +8,12 @@ export function BottomNav() {
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 safe-area-inset-bottom">
+    <div className="flex-none bg-white border-t border-gray-200 safe-area-inset-bottom">
       <div className="max-w-lg mx-auto px-6 py-3 flex justify-around items-center">
         <button
           onClick={() => navigate('/')}
-          className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-colors ${
-            isActive('/') ? 'text-blue-500' : 'text-gray-500'
-          }`}
+          className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-colors ${isActive('/') ? 'text-blue-500' : 'text-gray-500'
+            }`}
         >
           <Home className="w-6 h-6" />
           <span className="text-xs">Home</span>
@@ -29,9 +28,8 @@ export function BottomNav() {
 
         <button
           onClick={() => navigate('/settings')}
-          className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-colors ${
-            isActive('/settings') ? 'text-blue-500' : 'text-gray-500'
-          }`}
+          className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-colors ${isActive('/settings') ? 'text-blue-500' : 'text-gray-500'
+            }`}
         >
           <Settings className="w-6 h-6" />
           <span className="text-xs">Settings</span>

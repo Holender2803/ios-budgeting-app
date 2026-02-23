@@ -69,10 +69,10 @@ export function DailyView({ currentDate, transactions }: DailyViewProps) {
                 <div className="flex items-center justify-between mb-2.5 px-1">
                   <div className="flex items-center gap-2">
                     <div
-                      className="w-2 h-2 rounded-full opacity-60"
+                      className="w-2.5 h-2.5 rounded-full opacity-80"
                       style={{ backgroundColor: category.color }}
                     />
-                    <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    <h3 className="text-[13px] font-semibold text-gray-700">
                       {category.name}
                     </h3>
                   </div>

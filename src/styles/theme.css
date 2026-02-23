@@ -39,6 +39,17 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* Intensity Scale (Blue) */
+  --intensity-1-bg: #eff6ff;
+  --intensity-1-text: #2563eb;
+  --intensity-2-bg: #dbeafe;
+  --intensity-2-text: #1d4ed8;
+  --intensity-3-bg: #bfdbfe;
+  --intensity-3-text: #1744bc;
+  --intensity-4-bg: #3b82f6;
+  --intensity-4-text: #ffffff;
+  --intensity-4-shadow: 0 4px 6px -1px rgb(59 130 246 / 0.1), 0 2px 4px -2px rgb(59 130 246 / 0.1);
 }
 
 .dark {
@@ -76,6 +87,16 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(0.269 0 0);
   --sidebar-ring: oklch(0.439 0 0);
+
+  /* Intensity Scale (Dark Mode Calibration) */
+  --intensity-1-bg: oklch(0.25 0.05 250);
+  --intensity-1-text: oklch(0.8 0.1 250);
+  --intensity-2-bg: oklch(0.35 0.1 250);
+  --intensity-2-text: oklch(0.9 0.05 250);
+  --intensity-3-bg: oklch(0.45 0.15 250);
+  --intensity-3-text: oklch(1 0 0);
+  --intensity-4-bg: oklch(0.55 0.2 250);
+  --intensity-4-text: oklch(1 0 0);
 }
 
 @theme inline {
@@ -117,6 +138,15 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  --color-intensity-1-bg: var(--intensity-1-bg);
+  --color-intensity-1-text: var(--intensity-1-text);
+  --color-intensity-2-bg: var(--intensity-2-bg);
+  --color-intensity-2-text: var(--intensity-2-text);
+  --color-intensity-3-bg: var(--intensity-3-bg);
+  --color-intensity-3-text: var(--intensity-3-text);
+  --color-intensity-4-bg: var(--intensity-4-bg);
+  --color-intensity-4-text: var(--intensity-4-text);
 }
 
 @layer base {
