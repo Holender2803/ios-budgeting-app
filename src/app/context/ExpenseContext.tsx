@@ -36,6 +36,7 @@ interface ExpenseContextType {
   exportBackup: () => void;
   importBackup: (jsonString: string) => Promise<void>;
   clearAllData: () => Promise<void>;
+  isHydrated: boolean;
 }
 
 const ExpenseContext = createContext<ExpenseContextType | undefined>(undefined);
@@ -310,90 +311,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
   const [includeRecurring, setIncludeRecurring] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
 
-  // Helpers for expansion
-  const getSuggestedCategory = (vendor: string) => {
-    const { categoryId } = suggestCategoryForVendor(vendor, categories, vendorRules);
-    return categoryId;
-  };
-
-  const expandTransactions = (baseTransactions: Transaction[]): Transaction[] => {
-    const expanded: Transaction[] = [];
-    const horizon = endOfYear(addYears(startOfToday(), 1)); // Generate for current and next year
-
-    baseTransactions.forEach((t) => {
-      expanded.push(t);
-
-      if (t.isRecurring && t.recurrenceType && t.isActive !== false) {
-        let currentDate = parseISO(t.date);
-        const cutoffDateStr = t.endedAt || format(horizon, 'yyyy-MM-dd');
-        const cutoffDate = parseISO(cutoffDateStr);
-
-        const endDate = t.endDate ? parseISO(t.endDate) : horizon;
-        const limit = isBefore(endDate, cutoffDate) ? endDate : cutoffDate;
-
-        let nextDate = t.recurrenceType === 'weekly'
-          ? addWeeks(currentDate, 1)
-          : addMonths(currentDate, 1);
-
-        while (!isAfter(nextDate, limit)) {
-          const dateStr = format(nextDate, 'yyyy-MM-dd');
-          const exception = recurringExceptions.find(e => e.ruleId === t.id && e.date === dateStr);
-
-          expanded.push({
-            ...t,
-            id: `${t.id}-${dateStr}`,
-            date: dateStr,
-            isVirtual: true,
-            isSkipped: exception?.skipped || false,
-            skipNote: exception?.note,
-          } as any);
-
-          nextDate = t.recurrenceType === 'weekly'
-            ? addWeeks(nextDate, 1)
-            : addMonths(nextDate, 1);
-        }
-      }
-    });
-
-    return expanded;
-  };
-
-  // 2. Expand and process transactions
-  const processedTransactions = React.useMemo(() => {
-    // 1. Apply vendor rules first
-    const withRules = transactions.map((t) => {
-      const suggestedCategory = getSuggestedCategory(t.vendor);
-      if (suggestedCategory) {
-        return { ...t, category: suggestedCategory };
-      }
-      return t;
-    });
-
-    // 2. Expand recurring
-    return expandTransactions(withRules);
-  }, [transactions, categories, vendorRules, recurringExceptions]);
-
-  // 3. Apply global filters (on expanded set)
-  const filteredTransactions = React.useMemo(() => {
-    let filtered = processedTransactions;
-
-    // Filter by category
-    if (selectedCategoryIds.length > 0) {
-      filtered = filtered.filter(t => selectedCategoryIds.includes(t.category));
-    }
-
-    // Filter by recurring toggle
-    if (!includeRecurring) {
-      filtered = filtered.filter(t => !t.isRecurring);
-    }
-
-    // Always exclude skipped virtual occurrences
-    filtered = filtered.filter(t => !t.isSkipped);
-
-    return filtered;
-  }, [processedTransactions, selectedCategoryIds, includeRecurring]);
-
-  // Load data from IndexedDB (with localStorage migration) on mount
+  // Load initial data from IndexedDB (with localStorage migration) on mount
   useEffect(() => {
     async function loadData() {
       // 1. Try to load from IndexedDB
@@ -506,6 +424,89 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     loadData();
   }, []);
 
+  // Helpers for expansion
+  const getSuggestedCategory = (vendor: string) => {
+    const { categoryId } = suggestCategoryForVendor(vendor, categories, vendorRules);
+    return categoryId;
+  };
+
+  const expandTransactions = (baseTransactions: Transaction[]): Transaction[] => {
+    const expanded: Transaction[] = [];
+    const horizon = endOfYear(addYears(startOfToday(), 1)); // Generate for current and next year
+
+    baseTransactions.forEach((t) => {
+      expanded.push(t);
+
+      if (t.isRecurring && t.recurrenceType && t.isActive !== false) {
+        let currentDate = parseISO(t.date);
+        const cutoffDateStr = t.endedAt || format(horizon, 'yyyy-MM-dd');
+        const cutoffDate = parseISO(cutoffDateStr);
+
+        const endDate = t.endDate ? parseISO(t.endDate) : horizon;
+        const limit = isBefore(endDate, cutoffDate) ? endDate : cutoffDate;
+
+        let nextDate = t.recurrenceType === 'weekly'
+          ? addWeeks(currentDate, 1)
+          : addMonths(currentDate, 1);
+
+        while (!isAfter(nextDate, limit)) {
+          const dateStr = format(nextDate, 'yyyy-MM-dd');
+          const exception = recurringExceptions.find(e => e.ruleId === t.id && e.date === dateStr);
+
+          expanded.push({
+            ...t,
+            id: `${t.id}-${dateStr}`,
+            date: dateStr,
+            isVirtual: true,
+            isSkipped: exception?.skipped || false,
+            skipNote: exception?.note,
+          } as any);
+
+          nextDate = t.recurrenceType === 'weekly'
+            ? addWeeks(nextDate, 1)
+            : addMonths(nextDate, 1);
+        }
+      }
+    });
+
+    return expanded;
+  };
+
+  // 2. Expand and process transactions
+  const processedTransactions = React.useMemo(() => {
+    // 1. Apply vendor rules first
+    const withRules = transactions.map((t) => {
+      const suggestedCategory = getSuggestedCategory(t.vendor);
+      if (suggestedCategory) {
+        return { ...t, category: suggestedCategory };
+      }
+      return t;
+    });
+
+    // 2. Expand recurring
+    return expandTransactions(withRules);
+  }, [transactions, categories, vendorRules, recurringExceptions]);
+
+  // 3. Apply global filters (on expanded set)
+  const filteredTransactions = React.useMemo(() => {
+    let filtered = processedTransactions;
+
+    // Filter by category
+    if (selectedCategoryIds.length > 0) {
+      filtered = filtered.filter(t => selectedCategoryIds.includes(t.category));
+    }
+
+    // Filter by recurring toggle
+    if (!includeRecurring) {
+      filtered = filtered.filter(t => !t.isRecurring);
+    }
+
+    // Always exclude skipped virtual occurrences
+    filtered = filtered.filter(t => !t.isSkipped);
+
+    return filtered;
+  }, [processedTransactions, selectedCategoryIds, includeRecurring]);
+
   // Sync state to IndexedDB whenever it changes
   // We use key-based storage for arrays to avoid massive single-key reads if needed later, 
   // but for now, we just overwrite the whole collection to match the sync nature of the app.
@@ -548,23 +549,29 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     sync();
   }, [recurringExceptions, isHydrated]);
 
-  const addTransaction = (transaction: Omit<Transaction, 'id'>) => {
+  const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
     const newTransaction = {
       ...transaction,
       id: Date.now().toString(),
       isActive: transaction.isRecurring ? true : undefined,
     };
     setTransactions((prev) => [...prev, newTransaction]);
+    await storage.set('transactions', newTransaction.id, newTransaction);
   };
 
-  const updateTransaction = (id: string, updates: Partial<Transaction>) => {
+  const updateTransaction = async (id: string, updates: Partial<Transaction>) => {
     setTransactions((prev) =>
       prev.map((t) => (t.id === id ? { ...t, ...updates } : t))
     );
+    const existing = transactions.find(t => t.id === id);
+    if (existing) {
+      await storage.set('transactions', id, { ...existing, ...updates });
+    }
   };
 
-  const deleteTransaction = (id: string) => {
+  const deleteTransaction = async (id: string) => {
     setTransactions((prev) => prev.filter((t) => t.id !== id));
+    await storage.remove('transactions', id);
   };
 
   const validateCategory = (name: string, group: string, id?: string) => {
@@ -586,7 +593,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     return true;
   };
 
-  const addCategory = (category: Omit<Category, 'id'>) => {
+  const addCategory = async (category: Omit<Category, 'id'>) => {
     if (!validateCategory(category.name, category.group)) return;
 
     const newCategory = {
@@ -594,9 +601,10 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       id: `custom-${Date.now()}`,
     };
     setCategories((prev) => [...prev, newCategory]);
+    await storage.set('categories', newCategory.id, newCategory);
   };
 
-  const updateCategory = (id: string, updates: Partial<Category>) => {
+  const updateCategory = async (id: string, updates: Partial<Category>) => {
     const existing = categories.find(c => c.id === id);
     if (!existing) return;
 
@@ -605,6 +613,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     setCategories((prev) =>
       prev.map((c) => (c.id === id ? { ...c, ...updates } : c))
     );
+    await storage.set('categories', id, { ...existing, ...updates });
   };
 
   const deleteCategory = (id: string) => {
@@ -622,11 +631,25 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     );
     setCategories((prev) => prev.filter((c) => c.id !== id));
 
+    const removeOperations = async () => {
+      // Need to re-sync all transactions that changed
+      const affectedTrans = transactions.filter(t => t.category === id);
+      for (const t of affectedTrans) {
+        await storage.set('transactions', t.id, { ...t, category: 'cat-shopping' });
+      }
+      const affectedRules = vendorRules.filter(r => r.categoryId === id);
+      for (const r of affectedRules) {
+        await storage.set('vendorRules', r.id, { ...r, categoryId: 'cat-shopping' });
+      }
+      await storage.remove('categories', id);
+    };
+    removeOperations();
+
     // Sync to storage is handled by useEffects, but we'll let the state update happen
     toast.success('Category removed and transactions remapped');
   };
 
-  const addVendorRule = (rule: Omit<VendorRule, 'id' | 'source' | 'createdAt'>) => {
+  const addVendorRule = async (rule: Omit<VendorRule, 'id' | 'source' | 'createdAt'>) => {
     const newRule: VendorRule = {
       ...rule,
       id: Date.now().toString(),
@@ -634,10 +657,12 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       createdAt: Date.now(),
     };
     setVendorRules((prev) => [...prev, newRule]);
+    await storage.set('vendorRules', newRule.id, newRule);
   };
 
-  const deleteVendorRule = (id: string) => {
+  const deleteVendorRule = async (id: string) => {
     setVendorRules((prev) => prev.filter((r) => r.id !== id));
+    await storage.remove('vendorRules', id);
   };
 
   const updateSettings = (updates: Partial<Settings>) => {
@@ -695,15 +720,18 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     setSettings((prev) => ({ ...prev, defaultCategoryFilter: selectedCategoryIds }));
   };
 
-  const skipOccurrence = (ruleId: string, date: string, note?: string) => {
+  const skipOccurrence = async (ruleId: string, date: string, note?: string) => {
+    const newException = { ruleId, date, skipped: true, note };
     setRecurringExceptions(prev => [
       ...prev.filter(e => !(e.ruleId === ruleId && e.date === date)),
-      { ruleId, date, skipped: true, note }
+      newException
     ]);
+    await storage.set('recurringExceptions', `${ruleId}-${date}`, newException);
   };
 
-  const unskipOccurrence = (ruleId: string, date: string) => {
+  const unskipOccurrence = async (ruleId: string, date: string) => {
     setRecurringExceptions(prev => prev.filter(e => !(e.ruleId === ruleId && e.date === date)));
+    await storage.remove('recurringExceptions', `${ruleId}-${date}`);
   };
 
   const stopRecurringRule = (id: string) => {
@@ -873,6 +901,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
         exportBackup,
         importBackup,
         clearAllData,
+        isHydrated
       }}
     >
       {children}

@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router';
-import { ChevronRight, Bell, Calendar, Shield, Tag, ChevronLeft, Filter, Repeat, Trash2, StopCircle } from 'lucide-react';
+import { ChevronRight, Bell, Calendar, Shield, Tag, ChevronLeft, Filter, Repeat, Trash2, StopCircle, User as UserIcon, LogOut, Cloud } from 'lucide-react';
 import { useExpense } from '../context/ExpenseContext';
 import { format, parseISO } from 'date-fns';
 import { Switch } from '../components/ui/switch';
@@ -16,9 +16,14 @@ import {
 import { BottomNav } from '../components/BottomNav';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
+import { useAuth } from '../context/AuthContext';
+import { AuthModal } from '../components/AuthModal';
+import { useState } from 'react';
 
 export function Settings() {
   const navigate = useNavigate();
+  const { user, supabaseConfigured, signOut } = useAuth();
+  const [authModalOpen, setAuthModalOpen] = useState(false);
   const {
     settings,
     updateSettings,
@@ -152,6 +157,83 @@ export function Settings() {
             })}
           </div>
 
+          {/* Account & Cloud Sync */}
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+            <h3 className="font-medium text-gray-900 mb-4 px-2">Account & Sync</h3>
+            <div className="space-y-4">
+              {/* Cloud Status Indicator */}
+              <div className="bg-gray-50 rounded-xl p-4 flex items-start gap-3">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${!supabaseConfigured ? 'bg-gray-200' :
+                    user ? 'bg-green-100' : 'bg-blue-100'
+                  }`}>
+                  <Cloud className={`w-4 h-4 ${!supabaseConfigured ? 'text-gray-500' :
+                      user ? 'text-green-600' : 'text-blue-600'
+                    }`} />
+                </div>
+                <div>
+                  <p className="font-medium text-gray-900 text-sm">Cloud status</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {!supabaseConfigured
+                      ? "Local-only. Supabase not configured."
+                      : user
+                        ? `Signed in as ${user.email}`
+                        : "Configured but signed out."}
+                  </p>
+                </div>
+              </div>
+
+              {/* Sync Placeholders */}
+              {supabaseConfigured && user && (
+                <div className="px-2 space-y-2">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-600">Sync Status</span>
+                    <span className="font-medium text-gray-900">Disabled (TODO)</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-600">Last Sync</span>
+                    <span className="font-medium text-gray-900">Never (TODO)</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Auth Actions */}
+              {supabaseConfigured && (
+                <div className="pt-2">
+                  {user ? (
+                    <button
+                      onClick={() => signOut()}
+                      className="w-full bg-red-50 hover:bg-red-100 rounded-xl p-4 flex items-center justify-between transition-colors border border-red-100"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
+                          <LogOut className="w-4 h-4 text-red-600" />
+                        </div>
+                        <div className="text-left">
+                          <p className="font-medium text-red-700 text-sm">Sign out</p>
+                        </div>
+                      </div>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setAuthModalOpen(true)}
+                      className="w-full bg-blue-50 hover:bg-blue-100 rounded-xl p-4 flex items-center justify-between transition-colors border border-blue-100"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                          <UserIcon className="w-4 h-4 text-blue-600" />
+                        </div>
+                        <div className="text-left">
+                          <p className="font-medium text-blue-700 text-sm">Sign in / Create account</p>
+                          <p className="text-xs text-blue-500">Enable cloud backups and sync</p>
+                        </div>
+                      </div>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
 
           {/* Default Category Filter */}
           {settings.defaultCategoryFilter && settings.defaultCategoryFilter.length > 0 && (
@@ -280,8 +362,13 @@ export function Settings() {
         </div>
       </div>
 
-      {/* Footer Nav */}
       <BottomNav />
+
+      {/* Auth Modal */}
+      <AuthModal
+        open={authModalOpen}
+        onOpenChange={setAuthModalOpen}
+      />
     </div>
   );
 }

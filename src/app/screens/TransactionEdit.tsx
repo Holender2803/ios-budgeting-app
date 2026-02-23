@@ -40,9 +40,9 @@ export function TransactionEdit() {
     }
   };
 
-  const handleCategorySelect = (id: string, source: 'manual' | 'suggestion') => {
+  const handleCategorySelect = (id: string, source?: 'manual' | 'suggestion') => {
     setCategoryId(id);
-    setCategorySource(source);
+    setCategorySource(source || 'manual');
     if (source === 'suggestion') {
       toast.success('✨ Category applied', { duration: 1500 });
     }
@@ -69,7 +69,7 @@ export function TransactionEdit() {
     if (categorySource === 'suggestion') {
       // Auto-create rule if suggested category was applied
       addVendorRule({
-        vendor: vendor.trim(),
+        vendorContains: vendor.trim(),
         categoryId,
       });
     }
@@ -77,9 +77,9 @@ export function TransactionEdit() {
     navigate(`/day/${date}`);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this expense?')) {
-      deleteTransaction(id!);
+      await deleteTransaction(id!);
       navigate(`/day/${transaction.date}`);
     }
   };
