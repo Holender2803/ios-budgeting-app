@@ -76,6 +76,138 @@ const DEFAULT_CATEGORIES: Category[] = [
   { id: 'cat-donations', name: 'Donations', icon: 'Heart', color: '#EB5757', group: 'Giving' },
 ];
 
+export const CANONICAL_GROUPS = [
+  'Everyday',
+  'Home & Life',
+  'Getting Around',
+  'Health & Growth',
+  'Money Matters',
+  'Giving'
+] as const;
+
+export type CanonicalGroup = typeof CANONICAL_GROUPS[number];
+
+// --- Helpers & Migration ---
+
+export const normalizeLabel = (label: string) => {
+  return label.trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')      // collapse spaces
+    .replace(/[^\w\s&]/g, ''); // basic punctuation removal (keep &)
+};
+
+export const getCategoryError = (name: string, categories: Category[], id?: string) => {
+  const label = normalizeLabel(name);
+  if (!label) return 'Category name is required';
+  const isDuplicate = categories.some(c => normalizeLabel(c.name) === label && c.id !== id);
+  if (isDuplicate) return 'This category already exists';
+  return null;
+};
+
+const LEGACY_MAPPING: Record<string, string> = {
+  'coffee': 'cat-coffee',
+  'transportation': 'cat-transport',
+  'fees & charges': 'cat-bank', // or cat-taxes
+  'bills': 'cat-util',
+  'other': 'cat-shopping',
+};
+
+const migrateData = (
+  categories: Category[],
+  transactions: Transaction[],
+  vendorRules: VendorRule[]
+) => {
+  let changed = false;
+  const idMap: Record<string, string> = {};
+
+  // 1. Remap legacy IDs and labels
+  const migratedCats: Category[] = [];
+  const seenLabels = new Set<string>();
+
+  // Initialize seen labels with canonical categories
+  DEFAULT_CATEGORIES.forEach(c => seenLabels.add(normalizeLabel(c.name)));
+
+  // Process user categories
+  categories.forEach(cat => {
+    const label = normalizeLabel(cat.name);
+
+    // Rule A: Map specific legacy labels to canonical IDs
+    if (LEGACY_MAPPING[label]) {
+      idMap[cat.id] = LEGACY_MAPPING[label];
+      changed = true;
+      return;
+    }
+
+    // Rule B: Deduplicate against canonicals or existing migrated ones
+    if (seenLabels.has(label)) {
+      const canonicalMatch = DEFAULT_CATEGORIES.find(c => normalizeLabel(c.name) === label);
+      if (canonicalMatch) {
+        idMap[cat.id] = canonicalMatch.id;
+        changed = true;
+        return;
+      }
+
+      const customMatch = migratedCats.find(c => normalizeLabel(c.name) === label);
+      if (customMatch) {
+        idMap[cat.id] = customMatch.id;
+        changed = true;
+        return;
+      }
+    }
+
+    // Rule D: Group integrity
+    if (!cat.group || !CANONICAL_GROUPS.includes(cat.group as any)) {
+      cat.group = 'Everyday';
+      changed = true;
+    }
+
+    migratedCats.push(cat);
+    seenLabels.add(label);
+  });
+
+  // Combine defaults and migrated custom cats
+  const finalCategories = [...DEFAULT_CATEGORIES];
+  migratedCats.forEach(cat => {
+    if (!finalCategories.some(c => c.id === cat.id)) {
+      finalCategories.push(cat);
+    }
+  });
+
+  // 2. Remap transactions
+  const migratedTransactions = transactions.map(t => {
+    if (idMap[t.category]) {
+      changed = true;
+      return { ...t, category: idMap[t.category] };
+    }
+    // Safety check: if category ID is totally invalid/missing from final list, fallback to cat-other/cat-shopping
+    if (!finalCategories.some(c => c.id === t.category)) {
+      changed = true;
+      return { ...t, category: 'cat-shopping' };
+    }
+    return t;
+  });
+
+  // 3. Remap vendor rules
+  const migratedRules = vendorRules.map(r => {
+    if (idMap[r.categoryId]) {
+      changed = true;
+      return { ...r, categoryId: idMap[r.categoryId] };
+    }
+    if (!finalCategories.some(c => c.id === r.categoryId)) {
+      changed = true;
+      return { ...r, categoryId: 'cat-shopping' };
+    }
+    return r;
+  });
+
+  return {
+    categories: finalCategories,
+    transactions: migratedTransactions,
+    vendorRules: migratedRules,
+    changed
+  };
+};
+
 const DEFAULT_SETTINGS: Settings = {
   notifications: true,
   googleCalendarSync: false,
@@ -174,6 +306,29 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       }
       if (dbExceptions.length > 0) setRecurringExceptions(dbExceptions);
 
+      // 4. Run Migration (idempotent, safer)
+      const migrationVersion = localStorage.getItem('category_schema_v1');
+      const hasLegacy = dbCategories.some(c => Object.keys(LEGACY_MAPPING).includes(normalizeLabel(c.name)));
+
+      if (!migrationVersion || hasLegacy) {
+        const { categories: migratedCats, transactions: migratedTrans, vendorRules: migratedRules, changed } = migrateData(
+          dbCategories.length > 0 ? dbCategories : DEFAULT_CATEGORIES,
+          dbTransactions.length > 0 ? dbTransactions : [],
+          dbRules.length > 0 ? dbRules : []
+        );
+
+        if (changed || !migrationVersion) {
+          setCategories(migratedCats);
+          setTransactions(migratedTrans);
+          setVendorRules(migratedRules);
+          // Persist immediately
+          for (const c of migratedCats) await storage.set('categories', c.id, c);
+          for (const t of migratedTrans) await storage.set('transactions', t.id, t);
+          for (const r of migratedRules) await storage.set('vendorRules', r.id, r);
+          localStorage.setItem('category_schema_v1', 'true');
+        }
+      }
+
       setIsHydrated(true);
     }
 
@@ -241,22 +396,63 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     setTransactions((prev) => prev.filter((t) => t.id !== id));
   };
 
+  const validateCategory = (name: string, group: string, id?: string) => {
+    const label = normalizeLabel(name);
+    if (!label) {
+      toast.error('Category name cannot be empty');
+      return false;
+    }
+    if (!CANONICAL_GROUPS.includes(group as any)) {
+      toast.error('Invalid category group');
+      return false;
+    }
+    // Prevent shadowing canonical or existing custom names
+    const isDuplicate = categories.some(c => normalizeLabel(c.name) === label && c.id !== id);
+    if (isDuplicate) {
+      toast.error('A category with this name already exists');
+      return false;
+    }
+    return true;
+  };
+
   const addCategory = (category: Omit<Category, 'id'>) => {
+    if (!validateCategory(category.name, category.group)) return;
+
     const newCategory = {
       ...category,
-      id: Date.now().toString(),
+      id: `custom-${Date.now()}`,
     };
     setCategories((prev) => [...prev, newCategory]);
   };
 
   const updateCategory = (id: string, updates: Partial<Category>) => {
+    const existing = categories.find(c => c.id === id);
+    if (!existing) return;
+
+    if (!validateCategory(updates.name ?? existing.name, updates.group ?? existing.group, id)) return;
+
     setCategories((prev) =>
       prev.map((c) => (c.id === id ? { ...c, ...updates } : c))
     );
   };
 
   const deleteCategory = (id: string) => {
+    // Only allow deleting custom categories for safety (though UI should handle this)
+    if (!id.startsWith('custom-')) {
+      toast.error('System categories cannot be deleted');
+      return;
+    }
+
+    setTransactions((prev) =>
+      prev.map((t) => (t.category === id ? { ...t, category: 'cat-shopping' } : t))
+    );
+    setVendorRules((prev) =>
+      prev.map((r) => (r.categoryId === id ? { ...r, categoryId: 'cat-shopping' } : r))
+    );
     setCategories((prev) => prev.filter((c) => c.id !== id));
+
+    // Sync to storage is handled by useEffects, but we'll let the state update happen
+    toast.success('Category removed and transactions remapped');
   };
 
   const addVendorRule = (rule: Omit<VendorRule, 'id'>) => {

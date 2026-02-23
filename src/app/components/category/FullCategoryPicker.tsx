@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import * as LucideIcons from 'lucide-react';
 import { Search, X, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useExpense } from '../../context/ExpenseContext';
+import { useExpense, CANONICAL_GROUPS, getCategoryError } from '../../context/ExpenseContext';
 import { Category } from '../../types';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -48,8 +48,6 @@ export function FullCategoryPicker({
     };
 
     const [newGroup, setNewGroup] = useState('Everyday');
-
-    const groups = ['Everyday', 'Home & Life', 'Getting Around', 'Health & Growth', 'Money Matters', 'Giving'];
 
     const handleAddNew = () => {
         if (!newName.trim()) return;
@@ -213,12 +211,17 @@ export function FullCategoryPicker({
                                                     className="h-12 bg-white rounded-xl border-gray-200"
                                                     autoFocus
                                                 />
+                                                {getCategoryError(newName, categories) && newName.trim() !== '' && (
+                                                    <p className="text-[10px] font-bold text-red-500 uppercase tracking-tight ml-1">
+                                                        {getCategoryError(newName, categories)}
+                                                    </p>
+                                                )}
                                             </div>
 
                                             <div className="space-y-2">
                                                 <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Pick Group</Label>
-                                                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-                                                    {groups.map(g => (
+                                                <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+                                                    {CANONICAL_GROUPS.map(g => (
                                                         <button
                                                             key={g}
                                                             onClick={() => setNewGroup(g)}
@@ -242,8 +245,8 @@ export function FullCategoryPicker({
                                                 </button>
                                                 <button
                                                     onClick={handleAddNew}
-                                                    disabled={!newName.trim()}
-                                                    className="flex-1 h-12 bg-blue-500 text-white rounded-xl text-xs font-bold uppercase disabled:bg-gray-300 shadow-lg shadow-blue-100"
+                                                    disabled={!!getCategoryError(newName, categories)}
+                                                    className="flex-1 h-12 bg-blue-500 text-white rounded-xl text-xs font-bold uppercase disabled:bg-gray-100 disabled:text-gray-400 shadow-lg shadow-blue-100"
                                                 >
                                                     Add Category
                                                 </button>
