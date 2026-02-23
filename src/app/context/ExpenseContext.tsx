@@ -35,25 +35,45 @@ interface ExpenseContextType {
 const ExpenseContext = createContext<ExpenseContextType | undefined>(undefined);
 
 const DEFAULT_CATEGORIES: Category[] = [
-  // Essentials
-  { id: '1', name: 'Rent / Housing', icon: 'Home', color: '#81B29A' },
-  { id: '2', name: 'Groceries', icon: 'ShoppingCart', color: '#E76F51' },
-  { id: '3', name: 'Transportation', icon: 'Car', color: '#E07A5F' },
-  { id: '4', name: 'Utilities', icon: 'Zap', color: '#F4A261' },
+  // Everyday
+  { id: 'cat-food', name: 'Food & Dining', icon: 'UtensilsCrossed', color: '#E76F51', group: 'Everyday' },
+  { id: 'cat-coffee', name: 'Coffee & Drinks', icon: 'Coffee', color: '#A0826D', group: 'Everyday' },
+  { id: 'cat-groceries', name: 'Groceries', icon: 'ShoppingCart', color: '#81B29A', group: 'Everyday' },
+  { id: 'cat-shopping', name: 'Shopping', icon: 'ShoppingBag', color: '#3D9BE9', group: 'Everyday' },
+  { id: 'cat-personal', name: 'Personal Care', icon: 'User', color: '#9B51E0', group: 'Everyday' },
+  { id: 'cat-ent', name: 'Entertainment', icon: 'Film', color: '#F4A261', group: 'Everyday' },
+  { id: 'cat-hobbies', name: 'Hobbies', icon: 'Gamepad2', color: '#27AE60', group: 'Everyday' },
 
-  // Lifestyle
-  { id: '5', name: 'Food & Dining', icon: 'UtensilsCrossed', color: '#E07A5F' },
-  { id: '6', name: 'Coffee', icon: 'Coffee', color: '#A0826D' },
-  { id: '7', name: 'Shopping', icon: 'ShoppingBag', color: '#3D9BE9' },
-  { id: '8', name: 'Entertainment', icon: 'Film', color: '#F4A261' },
+  // Home & Life
+  { id: 'cat-rent', name: 'Rent / Housing', icon: 'Home', color: '#2D9CDB', group: 'Home & Life' },
+  { id: 'cat-util', name: 'Utilities', icon: 'Zap', color: '#F2C94C', group: 'Home & Life' },
+  { id: 'cat-subs', name: 'Subscriptions', icon: 'Repeat', color: '#BB6BD9', group: 'Home & Life' },
+  { id: 'cat-household', name: 'Household', icon: 'Box', color: '#828282', group: 'Home & Life' },
+  { id: 'cat-furniture', name: 'Furniture & Decor', icon: 'Armchair', color: '#8B4513', group: 'Home & Life' },
 
-  // Financial / Structural
-  { id: '9', name: 'Subscriptions', icon: 'Repeat', color: '#ADB5BD' },
-  { id: '10', name: 'Bills', icon: 'Receipt', color: '#6C757D' },
-  { id: '11', name: 'Fees & Charges', icon: 'AlertCircle', color: '#E76F51' },
+  // Getting Around
+  { id: 'cat-transport', name: 'Transport', icon: 'Bus', color: '#E07A5F', group: 'Getting Around' },
+  { id: 'cat-gas', name: 'Gas', icon: 'Fuel', color: '#333333', group: 'Getting Around' },
+  { id: 'cat-parking', name: 'Parking', icon: 'ParkingCircle', color: '#2F80ED', group: 'Getting Around' },
+  { id: 'cat-car', name: 'Car Maintenance', icon: 'Wrench', color: '#4F4F4F', group: 'Getting Around' },
+  { id: 'cat-travel', name: 'Travel', icon: 'Plane', color: '#56CCF2', group: 'Getting Around' },
 
-  // Catch-all
-  { id: '12', name: 'Other', icon: 'MoreHorizontal', color: '#ADB5BD' },
+  // Health & Growth
+  { id: 'cat-health', name: 'Health & Medical', icon: 'HeartPulse', color: '#EB5757', group: 'Health & Growth' },
+  { id: 'cat-fitness', name: 'Fitness', icon: 'Dumbbell', color: '#27AE60', group: 'Health & Growth' },
+  { id: 'cat-edu', name: 'Education', icon: 'GraduationCap', color: '#2F80ED', group: 'Health & Growth' },
+  { id: 'cat-child', name: 'Childcare', icon: 'Baby', color: '#F2994A', group: 'Health & Growth' },
+
+  // Money Matters
+  { id: 'cat-taxes', name: 'Taxes & Fees', icon: 'Receipt', color: '#828282', group: 'Money Matters' },
+  { id: 'cat-insure', name: 'Insurance', icon: 'ShieldCheck', color: '#2196F3', group: 'Money Matters' },
+  { id: 'cat-savings', name: 'Savings', icon: 'PiggyBank', color: '#6FCF97', group: 'Money Matters' },
+  { id: 'cat-debt', name: 'Debt Payments', icon: 'CreditCard', color: '#BDBDBD', group: 'Money Matters' },
+  { id: 'cat-bank', name: 'Bank Charges', icon: 'AlertCircle', color: '#4F4F4F', group: 'Money Matters' },
+
+  // Giving
+  { id: 'cat-gifts', name: 'Gifts', icon: 'Gift', color: '#F2C94C', group: 'Giving' },
+  { id: 'cat-donations', name: 'Donations', icon: 'Heart', color: '#EB5757', group: 'Giving' },
 ];
 
 const DEFAULT_SETTINGS: Settings = {
@@ -271,16 +291,48 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     if (!vendor) return null;
     const vendorLower = vendor.toLowerCase();
 
-    // Find all matching rules
+    // 1. Check user-defined rules first
     const matchingRules = vendorRules.filter((r) => vendorLower.includes(r.vendor.toLowerCase()));
-
-    // If multiple matches, pick longest rule (most specific)
     if (matchingRules.length > 0) {
       matchingRules.sort((a, b) => b.vendor.length - a.vendor.length);
       return matchingRules[0].categoryId;
     }
 
-    return null;
+    // 2. Fallback to hardcoded Toronto keyword map
+    const keywordMap: Record<string, string> = {
+      'bjj': 'cat-fitness',
+      'shoppers': 'cat-personal',
+      'pharma': 'cat-health',
+      'tim hortons': 'cat-coffee',
+      'starbucks': 'cat-coffee',
+      'coffee': 'cat-coffee',
+      'costco': 'cat-groceries',
+      'freshco': 'cat-groceries',
+      'loblaws': 'cat-groceries',
+      'farmboy': 'cat-groceries',
+      'grocery': 'cat-groceries',
+      'ramen': 'cat-food',
+      'zuzu': 'cat-food',
+      'library pizza': 'cat-food',
+      'pizza': 'cat-food',
+      'uber eats': 'cat-food',
+      'restaurant': 'cat-food',
+      'uber': 'cat-transport',
+      'ttc': 'cat-transport',
+      'presto': 'cat-transport',
+      'transit': 'cat-transport',
+      'shell': 'cat-gas',
+      'esso': 'cat-gas',
+      'petro': 'cat-gas',
+      'parking': 'cat-parking',
+      'netflix': 'cat-subs',
+      'spotify': 'cat-subs',
+      'apple': 'cat-subs',
+      'amazon': 'cat-shopping',
+    };
+
+    const keyword = Object.keys(keywordMap).find(k => vendorLower.includes(k));
+    return keyword ? keywordMap[keyword] : null;
   };
 
   const updateRecurringRule = (id: string, updates: Partial<Transaction>) => {

@@ -28,6 +28,7 @@ export interface Category {
   name: string;
   icon: string;
   color: string;
+  group: string;
 }
 
 export interface VendorRule {

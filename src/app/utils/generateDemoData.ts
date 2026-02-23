@@ -2,21 +2,21 @@ import { format, subDays } from 'date-fns';
 import { Transaction } from '../types';
 
 const demoVendors = [
-  { name: 'Starbucks', category: '1', amounts: [4.50, 5.75, 6.25] },
-  { name: 'Chipotle', category: '2', amounts: [12.50, 13.75, 15.00] },
-  { name: 'Whole Foods', category: '2', amounts: [45.50, 67.20, 52.30, 89.45] },
-  { name: 'Target', category: '3', amounts: [34.99, 56.75, 89.99] },
-  { name: 'Uber', category: '4', amounts: [15.50, 22.75, 18.20] },
-  { name: 'AMC Theaters', category: '5', amounts: [24.50, 36.00] },
-  { name: 'Blue Bottle Coffee', category: '1', amounts: [5.25, 6.00] },
-  { name: 'Sweetgreen', category: '2', amounts: [14.50, 16.25] },
-  { name: 'Amazon', category: '3', amounts: [27.99, 45.50, 89.99, 123.45] },
-  { name: 'Shake Shack', category: '2', amounts: [18.50, 22.00] },
-  { name: 'Trader Joes', category: '2', amounts: [38.20, 52.10, 71.30] },
-  { name: 'Lyft', category: '4', amounts: [12.30, 19.50] },
-  { name: 'CVS', category: '6', amounts: [15.99, 28.50] },
-  { name: 'Netflix', category: '5', amounts: [15.99] },
-  { name: 'Spotify', category: '5', amounts: [10.99] },
+  { name: 'Starbucks', category: 'cat-coffee', amounts: [4.50, 5.75, 6.25] },
+  { name: 'Chipotle', category: 'cat-food', amounts: [12.50, 13.75, 15.00] },
+  { name: 'Whole Foods', category: 'cat-groceries', amounts: [45.50, 67.20, 52.30, 89.45] },
+  { name: 'Target', category: 'cat-shopping', amounts: [34.99, 56.75, 89.99] },
+  { name: 'Uber', category: 'cat-transport', amounts: [15.50, 22.75, 18.20] },
+  { name: 'AMC Theaters', category: 'cat-ent', amounts: [24.50, 36.00] },
+  { name: 'Blue Bottle Coffee', category: 'cat-coffee', amounts: [5.25, 6.00] },
+  { name: 'Sweetgreen', category: 'cat-food', amounts: [14.50, 16.25] },
+  { name: 'Amazon', category: 'cat-shopping', amounts: [27.99, 45.50, 89.99, 123.45] },
+  { name: 'Shake Shack', category: 'cat-food', amounts: [18.50, 22.00] },
+  { name: 'Trader Joes', category: 'cat-groceries', amounts: [38.20, 52.10, 71.30] },
+  { name: 'Lyft', category: 'cat-transport', amounts: [12.30, 19.50] },
+  { name: 'CVS', category: 'cat-personal', amounts: [15.99, 28.50] },
+  { name: 'Netflix', category: 'cat-subs', amounts: [15.99] },
+  { name: 'Spotify', category: 'cat-subs', amounts: [10.99] },
 ];
 
 export function generateDemoData(): Transaction[] {

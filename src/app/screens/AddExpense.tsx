@@ -1,66 +1,41 @@
 import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router';
-import { format } from 'date-fns';
-import { ChevronLeft, Camera, FileText } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import { ChevronLeft, Camera } from 'lucide-react';
 import { useExpense } from '../context/ExpenseContext';
-import { CategorySelector } from '../components/CategorySelector';
+import { CategoryPicker } from '../components/category/CategoryPicker';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
-import { motion } from 'motion/react';
+import { format } from 'date-fns';
+import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 
 export function AddExpense() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const { addTransaction, categories, transactions, vendorRules, addVendorRule, getSuggestedCategory } = useExpense();
+  const { addTransaction, categories, addVendorRule } = useExpense();
 
-  const presetDate = (location.state as any)?.date || format(new Date(), 'yyyy-MM-dd');
-
-  const [vendor, setVendor] = useState('');
   const [amount, setAmount] = useState('');
+  const [vendor, setVendor] = useState('');
   const [categoryId, setCategoryId] = useState(categories[0]?.id || '');
-  const [date, setDate] = useState(presetDate);
+  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [note, setNote] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState<'weekly' | 'monthly'>('monthly');
   const [endDate, setEndDate] = useState('');
-  const [showRuleSuggestion, setShowRuleSuggestion] = useState(false);
-  const [categorySource, setCategorySource] = useState<'manual' | 'rule'>('manual');
+  const [categorySource, setCategorySource] = useState<'manual' | 'suggestion'>('manual');
 
-  // Check if we should auto-assign or suggest a rule
   const handleVendorChange = (newVendor: string) => {
     setVendor(newVendor);
-
-    if (newVendor.trim()) {
-      // 1. Auto-assign based on rules
-      const autoCategory = getSuggestedCategory(newVendor);
-      if (autoCategory) {
-        setCategoryId(autoCategory);
-        setCategorySource('rule');
-        setShowRuleSuggestion(false);
-        return;
-      }
-
+    if (!newVendor.trim()) {
       setCategorySource('manual');
-      // 2. Otherwise suggest rule if vendor appears 2+ times
-      const vendorTransactions = transactions.filter(
-        t => t.vendor.toLowerCase() === newVendor.toLowerCase()
-      );
-      setShowRuleSuggestion(vendorTransactions.length >= 2);
-    } else {
-      setCategorySource('manual');
-      setShowRuleSuggestion(false);
     }
   };
 
-  const handleCreateRule = () => {
-    if (vendor && categoryId) {
-      addVendorRule({
-        vendor: vendor.trim(),
-        categoryId,
-      });
-      setShowRuleSuggestion(false);
+  const handleCategorySelect = (id: string, source: 'manual' | 'suggestion') => {
+    setCategoryId(id);
+    setCategorySource(source);
+    if (source === 'suggestion') {
+      toast.success('✨ Category applied', { duration: 1500 });
     }
   };
 
@@ -80,8 +55,12 @@ export function AddExpense() {
       endDate: isRecurring && endDate ? endDate : undefined,
     });
 
-    if (categorySource === 'rule') {
-      toast.success('✨ Auto-categorized', { duration: 2000 });
+    if (categorySource === 'suggestion') {
+      // Auto-create rule if suggested category was applied
+      addVendorRule({
+        vendor: vendor.trim(),
+        categoryId,
+      });
     }
 
     navigate(`/day/${date}`);
@@ -127,7 +106,7 @@ export function AddExpense() {
             placeholder="Where did you spend?"
             value={vendor}
             onChange={(e) => handleVendorChange(e.target.value)}
-            className="h-14 rounded-2xl text-base"
+            className="h-14 rounded-2xl text-base shadow-sm border-gray-100 focus:border-blue-500 transition-all"
           />
         </div>
 
@@ -145,44 +124,19 @@ export function AddExpense() {
               placeholder="0.00"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="h-14 rounded-2xl text-base pl-8"
+              className="h-14 rounded-2xl text-base pl-8 shadow-sm border-gray-100 focus:border-blue-500 transition-all"
             />
           </div>
         </div>
 
-        {/* Category */}
+        {/* Category Tiered Selection */}
         <div className="space-y-3">
-          <Label>Category</Label>
-          <div className="space-y-1">
-            <CategorySelector selectedCategoryId={categoryId} onSelect={(id) => { setCategoryId(id); setCategorySource('manual'); }} />
-            {categorySource === 'rule' && (
-              <p className="text-xs text-blue-500 font-medium px-2 py-1 bg-blue-50/50 rounded inline-block">
-                ✨ Auto-categorized by rule
-              </p>
-            )}
-          </div>
-
-          {/* Rule Suggestion - Inline */}
-          {showRuleSuggestion && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              className="bg-blue-50 border border-blue-100 rounded-xl p-3 flex items-start gap-3"
-            >
-              <div className="flex-1">
-                <p className="text-sm text-blue-900">
-                  Always categorize <span className="font-medium">{vendor}</span> as{' '}
-                  <span className="font-medium">{categories.find(c => c.id === categoryId)?.name}</span>?
-                </p>
-              </div>
-              <button
-                onClick={handleCreateRule}
-                className="text-xs bg-blue-500 text-white px-3 py-1 rounded-full font-medium hover:bg-blue-600 transition-colors whitespace-nowrap"
-              >
-                Create Rule
-              </button>
-            </motion.div>
-          )}
+          <Label className="text-gray-900 font-bold ml-1">Category</Label>
+          <CategoryPicker
+            selectedCategoryId={categoryId}
+            onSelect={handleCategorySelect}
+            vendor={vendor}
+          />
         </div>
 
         {/* Date */}
@@ -193,7 +147,7 @@ export function AddExpense() {
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="h-14 rounded-2xl text-base"
+            className="h-14 rounded-2xl text-base shadow-sm border-gray-100 focus:border-blue-500 transition-all"
           />
         </div>
 

@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ChevronLeft, Upload, Loader2, Check } from 'lucide-react';
 import { useExpense } from '../context/ExpenseContext';
-import { CategorySelector } from '../components/CategorySelector';
+import { CategoryPicker } from '../components/category/CategoryPicker';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'sonner';
 
 type UploadState = 'upload' | 'processing' | 'review';
 
@@ -23,7 +24,7 @@ export function ReceiptUpload() {
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [categoryId, setCategoryId] = useState(categories[0]?.id || '');
-  const [categorySource, setCategorySource] = useState<'manual' | 'rule'>('manual');
+  const [categorySource, setCategorySource] = useState<'manual' | 'suggestion'>('manual');
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -45,14 +46,22 @@ export function ReceiptUpload() {
         const autoCategory = getSuggestedCategory(extractedVendor);
         if (autoCategory) {
           setCategoryId(autoCategory);
-          setCategorySource('rule');
+          setCategorySource('suggestion');
         } else {
-          setCategoryId(categories.find(c => c.name === 'Coffee')?.id || categories[0]?.id);
+          setCategoryId(categories.find(c => c.name === 'Coffee & Drinks')?.id || categories[0]?.id);
           setCategorySource('manual');
         }
 
         setUploadState('review');
       }, 2000);
+    }
+  };
+
+  const handleCategorySelect = (id: string, source: 'manual' | 'suggestion') => {
+    setCategoryId(id);
+    setCategorySource(source);
+    if (source === 'suggestion') {
+      toast.success('✨ Category applied', { duration: 1500 });
     }
   };
 
@@ -185,15 +194,11 @@ export function ReceiptUpload() {
                     onChange={(e) => {
                       const newVendor = e.target.value;
                       setVendor(newVendor);
-                      const autoCategory = getSuggestedCategory(newVendor);
-                      if (autoCategory) {
-                        setCategoryId(autoCategory);
-                        setCategorySource('rule');
-                      } else {
+                      if (!newVendor.trim()) {
                         setCategorySource('manual');
                       }
                     }}
-                    className="h-14 rounded-2xl text-base"
+                    className="h-14 rounded-2xl text-base shadow-sm border-gray-100 focus:border-blue-500 transition-all"
                   />
                 </div>
 
@@ -209,7 +214,7 @@ export function ReceiptUpload() {
                       step="0.01"
                       value={amount}
                       onChange={(e) => setAmount(e.target.value)}
-                      className="h-14 rounded-2xl text-base pl-8"
+                      className="h-14 rounded-2xl text-base pl-8 shadow-sm border-gray-100 focus:border-blue-500 transition-all"
                     />
                   </div>
                 </div>
@@ -221,23 +226,18 @@ export function ReceiptUpload() {
                     type="date"
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
-                    className="h-14 rounded-2xl text-base"
+                    className="h-14 rounded-2xl text-base shadow-sm border-gray-100 focus:border-blue-500 transition-all"
                   />
                 </div>
 
+                {/* Category Tiered Selection */}
                 <div className="space-y-3">
-                  <Label>Category</Label>
-                  <div className="space-y-1">
-                    <CategorySelector
-                      selectedCategoryId={categoryId}
-                      onSelect={(id) => { setCategoryId(id); setCategorySource('manual'); }}
-                    />
-                    {categorySource === 'rule' && (
-                      <p className="text-xs text-blue-500 font-medium px-2 py-1 bg-blue-50/50 rounded inline-block">
-                        ✨ Auto-categorized by rule
-                      </p>
-                    )}
-                  </div>
+                  <Label className="text-gray-900 font-bold ml-1">Category</Label>
+                  <CategoryPicker
+                    selectedCategoryId={categoryId}
+                    onSelect={handleCategorySelect}
+                    vendor={vendor}
+                  />
                 </div>
               </div>
 
