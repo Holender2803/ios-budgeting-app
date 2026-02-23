@@ -18,7 +18,7 @@ interface ExpenseContextType {
   addCategory: (category: Omit<Category, 'id'>) => void;
   updateCategory: (id: string, category: Partial<Category>) => void;
   deleteCategory: (id: string) => void;
-  addVendorRule: (rule: Omit<VendorRule, 'id'>) => void;
+  addVendorRule: (rule: Omit<VendorRule, 'id' | 'source' | 'createdAt'>) => void;
   deleteVendorRule: (id: string) => void;
   updateSettings: (settings: Partial<Settings>) => void;
   getCategoryById: (id: string) => Category | undefined;
@@ -30,6 +30,9 @@ interface ExpenseContextType {
   unskipOccurrence: (ruleId: string, date: string) => void;
   stopRecurringRule: (id: string) => void;
   recurringExceptions: RecurringException[];
+  includeRecurring: boolean;
+  setIncludeRecurring: (value: boolean) => void;
+  filteredTransactions: Transaction[];
 }
 
 const ExpenseContext = createContext<ExpenseContextType | undefined>(undefined);
@@ -43,6 +46,7 @@ const DEFAULT_CATEGORIES: Category[] = [
   { id: 'cat-personal', name: 'Personal Care', icon: 'User', color: '#9B51E0', group: 'Everyday' },
   { id: 'cat-ent', name: 'Entertainment', icon: 'Film', color: '#F4A261', group: 'Everyday' },
   { id: 'cat-hobbies', name: 'Hobbies', icon: 'Gamepad2', color: '#27AE60', group: 'Everyday' },
+  { id: 'cat-online-shopping', name: 'Online Shopping', icon: 'Globe', color: '#6366F1', group: 'Everyday' },
 
   // Home & Life
   { id: 'cat-rent', name: 'Rent / Housing', icon: 'Home', color: '#2D9CDB', group: 'Home & Life' },
@@ -85,6 +89,30 @@ export const CANONICAL_GROUPS = [
   'Giving'
 ] as const;
 
+export const DEFAULT_VENDOR_RULES: Omit<VendorRule, 'id' | 'source' | 'createdAt'>[] = [
+  { vendorContains: 'bjj', categoryId: 'cat-fitness' },
+  { vendorContains: 'shoppers', categoryId: 'cat-personal' },
+  { vendorContains: 'tim hortons', categoryId: 'cat-coffee' },
+  { vendorContains: 'starbucks', categoryId: 'cat-coffee' },
+  { vendorContains: 'costco', categoryId: 'cat-groceries' },
+  { vendorContains: 'freshco', categoryId: 'cat-groceries' },
+  { vendorContains: 'loblaws', categoryId: 'cat-groceries' },
+  { vendorContains: 'farm boy', categoryId: 'cat-groceries' },
+  { vendorContains: 'uber eats', categoryId: 'cat-food' },
+  { vendorContains: 'uber', categoryId: 'cat-transport' },
+  { vendorContains: 'ttc', categoryId: 'cat-transport' },
+  { vendorContains: 'presto', categoryId: 'cat-transport' },
+  { vendorContains: 'ramen', categoryId: 'cat-food' },
+  { vendorContains: 'zuzu', categoryId: 'cat-food' },
+  { vendorContains: 'library pizza', categoryId: 'cat-food' },
+  { vendorContains: 'pizza', categoryId: 'cat-food' },
+  { vendorContains: 'amazon', categoryId: 'cat-online-shopping' },
+  { vendorContains: 'aliexpress', categoryId: 'cat-online-shopping' },
+  { vendorContains: 'ebay', categoryId: 'cat-online-shopping' },
+  { vendorContains: 'shein', categoryId: 'cat-online-shopping' },
+  { vendorContains: 'iherb', categoryId: 'cat-online-shopping' },
+];
+
 export type CanonicalGroup = typeof CANONICAL_GROUPS[number];
 
 // --- Helpers & Migration ---
@@ -102,6 +130,44 @@ export const getCategoryError = (name: string, categories: Category[], id?: stri
   const isDuplicate = categories.some(c => normalizeLabel(c.name) === label && c.id !== id);
   if (isDuplicate) return 'This category already exists';
   return null;
+};
+
+export const suggestCategoryForVendor = (
+  vendorName: string,
+  categories: Category[],
+  userRules: VendorRule[],
+  defaultRules: typeof DEFAULT_VENDOR_RULES = DEFAULT_VENDOR_RULES
+): { categoryId: string | null; matchedRule?: any } => {
+  if (!vendorName) return { categoryId: null };
+
+  const normalizedInput = normalizeLabel(vendorName);
+
+  // Helper matching function
+  const findMatch = (rules: any[]) => {
+    const matches = rules.filter(r => {
+      const normalizedPattern = normalizeLabel(r.vendorContains || (r as any).vendor || '');
+      return normalizedInput.includes(normalizedPattern);
+    });
+
+    if (matches.length === 0) return null;
+
+    // Tie broken by longest match (most specific)
+    return matches.sort((a, b) => {
+      const aLen = normalizeLabel(a.vendorContains || (a as any).vendor || '').length;
+      const bLen = normalizeLabel(b.vendorContains || (b as any).vendor || '').length;
+      return bLen - aLen;
+    })[0];
+  };
+
+  // 1. User rules first
+  const userMatch = findMatch(userRules);
+  if (userMatch) return { categoryId: userMatch.categoryId, matchedRule: userMatch };
+
+  // 2. Default rules second
+  const defaultMatch = findMatch(defaultRules);
+  if (defaultMatch) return { categoryId: defaultMatch.categoryId, matchedRule: defaultMatch };
+
+  return { categoryId: null };
 };
 
 const LEGACY_MAPPING: Record<string, string> = {
@@ -189,15 +255,33 @@ const migrateData = (
 
   // 3. Remap vendor rules
   const migratedRules = vendorRules.map(r => {
+    let rule = { ...r };
+    let ruleChanged = false;
+
     if (idMap[r.categoryId]) {
-      changed = true;
-      return { ...r, categoryId: idMap[r.categoryId] };
+      rule.categoryId = idMap[r.categoryId];
+      ruleChanged = true;
+    } else if (!finalCategories.some(c => c.id === r.categoryId)) {
+      rule.categoryId = 'cat-shopping';
+      ruleChanged = true;
     }
-    if (!finalCategories.some(c => c.id === r.categoryId)) {
-      changed = true;
-      return { ...r, categoryId: 'cat-shopping' };
+
+    // New format migration
+    if (!(rule as any).vendorContains && (rule as any).vendor) {
+      rule.vendorContains = (rule as any).vendor;
+      ruleChanged = true;
     }
-    return r;
+    if (!rule.source) {
+      rule.source = 'user';
+      ruleChanged = true;
+    }
+    if (!rule.createdAt) {
+      rule.createdAt = Date.now();
+      ruleChanged = true;
+    }
+
+    if (ruleChanged) changed = true;
+    return rule;
   });
 
   return {
@@ -220,7 +304,91 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [recurringExceptions, setRecurringExceptions] = useState<RecurringException[]>([]);
+  const [includeRecurring, setIncludeRecurring] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
+
+  // Helpers for expansion
+  const getSuggestedCategory = (vendor: string) => {
+    const { categoryId } = suggestCategoryForVendor(vendor, categories, vendorRules);
+    return categoryId;
+  };
+
+  const expandTransactions = (baseTransactions: Transaction[]): Transaction[] => {
+    const expanded: Transaction[] = [];
+    const horizon = endOfYear(addYears(startOfToday(), 1)); // Generate for current and next year
+
+    baseTransactions.forEach((t) => {
+      expanded.push(t);
+
+      if (t.isRecurring && t.recurrenceType && t.isActive !== false) {
+        let currentDate = parseISO(t.date);
+        const cutoffDateStr = t.endedAt || format(horizon, 'yyyy-MM-dd');
+        const cutoffDate = parseISO(cutoffDateStr);
+
+        const endDate = t.endDate ? parseISO(t.endDate) : horizon;
+        const limit = isBefore(endDate, cutoffDate) ? endDate : cutoffDate;
+
+        let nextDate = t.recurrenceType === 'weekly'
+          ? addWeeks(currentDate, 1)
+          : addMonths(currentDate, 1);
+
+        while (!isAfter(nextDate, limit)) {
+          const dateStr = format(nextDate, 'yyyy-MM-dd');
+          const exception = recurringExceptions.find(e => e.ruleId === t.id && e.date === dateStr);
+
+          expanded.push({
+            ...t,
+            id: `${t.id}-${dateStr}`,
+            date: dateStr,
+            isVirtual: true,
+            isSkipped: exception?.skipped || false,
+            skipNote: exception?.note,
+          } as any);
+
+          nextDate = t.recurrenceType === 'weekly'
+            ? addWeeks(nextDate, 1)
+            : addMonths(nextDate, 1);
+        }
+      }
+    });
+
+    return expanded;
+  };
+
+  // 2. Expand and process transactions
+  const processedTransactions = React.useMemo(() => {
+    // 1. Apply vendor rules first
+    const withRules = transactions.map((t) => {
+      const suggestedCategory = getSuggestedCategory(t.vendor);
+      if (suggestedCategory) {
+        return { ...t, category: suggestedCategory };
+      }
+      return t;
+    });
+
+    // 2. Expand recurring
+    return expandTransactions(withRules);
+  }, [transactions, categories, vendorRules, recurringExceptions]);
+
+  // 3. Apply global filters (on expanded set)
+  const filteredTransactions = React.useMemo(() => {
+    let filtered = processedTransactions;
+
+    // Filter by category
+    if (selectedCategoryIds.length > 0) {
+      filtered = filtered.filter(t => selectedCategoryIds.includes(t.category));
+    }
+
+    // Filter by recurring toggle
+    if (!includeRecurring) {
+      filtered = filtered.filter(t => !t.isRecurring);
+    }
+
+    // Always exclude skipped virtual occurrences
+    filtered = filtered.filter(t => !t.isSkipped);
+
+    return filtered;
+  }, [processedTransactions, selectedCategoryIds, includeRecurring]);
 
   // Load data from IndexedDB (with localStorage migration) on mount
   useEffect(() => {
@@ -455,10 +623,12 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     toast.success('Category removed and transactions remapped');
   };
 
-  const addVendorRule = (rule: Omit<VendorRule, 'id'>) => {
-    const newRule = {
+  const addVendorRule = (rule: Omit<VendorRule, 'id' | 'source' | 'createdAt'>) => {
+    const newRule: VendorRule = {
       ...rule,
       id: Date.now().toString(),
+      source: 'user',
+      createdAt: Date.now(),
     };
     setVendorRules((prev) => [...prev, newRule]);
   };
@@ -483,53 +653,6 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     setSelectedCategoryIds(categoryIds);
   };
 
-  const getSuggestedCategory = (vendor: string) => {
-    if (!vendor) return null;
-    const vendorLower = vendor.toLowerCase();
-
-    // 1. Check user-defined rules first
-    const matchingRules = vendorRules.filter((r) => vendorLower.includes(r.vendor.toLowerCase()));
-    if (matchingRules.length > 0) {
-      matchingRules.sort((a, b) => b.vendor.length - a.vendor.length);
-      return matchingRules[0].categoryId;
-    }
-
-    // 2. Fallback to hardcoded Toronto keyword map
-    const keywordMap: Record<string, string> = {
-      'bjj': 'cat-fitness',
-      'shoppers': 'cat-personal',
-      'pharma': 'cat-health',
-      'tim hortons': 'cat-coffee',
-      'starbucks': 'cat-coffee',
-      'coffee': 'cat-coffee',
-      'costco': 'cat-groceries',
-      'freshco': 'cat-groceries',
-      'loblaws': 'cat-groceries',
-      'farmboy': 'cat-groceries',
-      'grocery': 'cat-groceries',
-      'ramen': 'cat-food',
-      'zuzu': 'cat-food',
-      'library pizza': 'cat-food',
-      'pizza': 'cat-food',
-      'uber eats': 'cat-food',
-      'restaurant': 'cat-food',
-      'uber': 'cat-transport',
-      'ttc': 'cat-transport',
-      'presto': 'cat-transport',
-      'transit': 'cat-transport',
-      'shell': 'cat-gas',
-      'esso': 'cat-gas',
-      'petro': 'cat-gas',
-      'parking': 'cat-parking',
-      'netflix': 'cat-subs',
-      'spotify': 'cat-subs',
-      'apple': 'cat-subs',
-      'amazon': 'cat-shopping',
-    };
-
-    const keyword = Object.keys(keywordMap).find(k => vendorLower.includes(k));
-    return keyword ? keywordMap[keyword] : null;
-  };
 
   const updateRecurringRule = (id: string, updates: Partial<Transaction>) => {
     const original = transactions.find(t => t.id === id);
@@ -598,68 +721,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Helper to expand recurring transactions into virtual occurrences
-  const expandTransactions = (baseTransactions: Transaction[]): Transaction[] => {
-    const expanded: Transaction[] = [];
-    const horizon = endOfYear(addYears(startOfToday(), 1)); // Generate for current and next year
 
-    baseTransactions.forEach((t) => {
-      // Always add the base transaction itself if it's not "permanently deleted" by endedAt check
-      // OR if it's a normal non-recurring one
-      expanded.push(t);
-
-      if (t.isRecurring && t.recurrenceType && t.isActive !== false) {
-        let currentDate = parseISO(t.date);
-        const cutoffDateStr = t.endedAt || format(horizon, 'yyyy-MM-dd');
-        const cutoffDate = parseISO(cutoffDateStr);
-
-        const endDate = t.endDate ? parseISO(t.endDate) : horizon;
-        const limit = isBefore(endDate, cutoffDate) ? endDate : cutoffDate;
-
-        // Generate subsequent occurrences
-        let nextDate = t.recurrenceType === 'weekly'
-          ? addWeeks(currentDate, 1)
-          : addMonths(currentDate, 1);
-
-        while (!isAfter(nextDate, limit)) {
-          const dateStr = format(nextDate, 'yyyy-MM-dd');
-
-          // Check for skip exception
-          const exception = recurringExceptions.find(e => e.ruleId === t.id && e.date === dateStr);
-
-          expanded.push({
-            ...t,
-            id: `${t.id}-${dateStr}`, // Deterministic virtual ID
-            date: dateStr,
-            isVirtual: true,
-            isSkipped: exception?.skipped || false,
-            skipNote: exception?.note,
-          } as Transaction & { isVirtual?: boolean; isSkipped?: boolean; skipNote?: string });
-
-          nextDate = t.recurrenceType === 'weekly'
-            ? addWeeks(nextDate, 1)
-            : addMonths(nextDate, 1);
-        }
-      }
-    });
-
-    return expanded;
-  };
-
-  // Dynamically apply vendor rules AND expand recurring transactions
-  const processedTransactions = (() => {
-    // 1. Apply vendor rules first
-    const withRules = transactions.map((t) => {
-      const suggestedCategory = getSuggestedCategory(t.vendor);
-      if (suggestedCategory) {
-        return { ...t, category: suggestedCategory };
-      }
-      return t;
-    });
-
-    // 2. Expand recurring
-    return expandTransactions(withRules);
-  })();
 
   if (!isHydrated) {
     return (
@@ -696,6 +758,9 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
         unskipOccurrence,
         stopRecurringRule,
         recurringExceptions,
+        includeRecurring,
+        setIncludeRecurring,
+        filteredTransactions,
       }}
     >
       {children}

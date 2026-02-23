@@ -1,14 +1,15 @@
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isToday } from 'date-fns';
 import { useExpense } from '../context/ExpenseContext';
+import { Transaction } from '../types';
 import { motion } from 'motion/react';
 
 interface WeeklyCalendarProps {
   currentDate: Date;
   onDayClick: (date: string) => void;
+  transactions: Transaction[];
 }
 
-export function WeeklyCalendar({ currentDate, onDayClick }: WeeklyCalendarProps) {
-  const { transactions, selectedCategoryIds } = useExpense();
+export function WeeklyCalendar({ currentDate, onDayClick, transactions }: WeeklyCalendarProps) {
 
   const weekStart = startOfWeek(currentDate);
   const weekEnd = endOfWeek(currentDate);
@@ -16,13 +17,7 @@ export function WeeklyCalendar({ currentDate, onDayClick }: WeeklyCalendarProps)
 
   const getDayData = (day: Date) => {
     const dateStr = format(day, 'yyyy-MM-dd');
-    let dayTransactions = transactions.filter(t => t.date === dateStr);
-
-    // Apply category filter
-    if (selectedCategoryIds.length > 0) {
-      dayTransactions = dayTransactions.filter(t => selectedCategoryIds.includes(t.category));
-    }
-
+    const dayTransactions = transactions.filter(t => t.date === dateStr);
     const dayTotal = dayTransactions.reduce((sum, t) => sum + t.amount, 0);
 
     return {
@@ -46,9 +41,8 @@ export function WeeklyCalendar({ currentDate, onDayClick }: WeeklyCalendarProps)
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.04 }}
               onClick={() => onDayClick(dayData.dateStr)}
-              className={`w-full bg-white rounded-xl px-4 py-3.5 hover:shadow-sm transition-all text-left ${
-                isTodayDate ? 'ring-1 ring-gray-300' : ''
-              }`}
+              className={`w-full bg-white rounded-xl px-4 py-3.5 hover:shadow-sm transition-all text-left ${isTodayDate ? 'ring-1 ring-gray-300' : ''
+                }`}
             >
               <div className="flex items-center justify-between">
                 {/* Left: Day · Date */}

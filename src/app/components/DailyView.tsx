@@ -1,28 +1,22 @@
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router';
 import { useExpense } from '../context/ExpenseContext';
+import { Transaction } from '../types';
 import { TransactionItem } from './TransactionItem';
 import { motion } from 'motion/react';
 import { Plus } from 'lucide-react';
 
 interface DailyViewProps {
   currentDate: Date;
+  transactions: Transaction[];
 }
 
-export function DailyView({ currentDate }: DailyViewProps) {
+export function DailyView({ currentDate, transactions }: DailyViewProps) {
   const navigate = useNavigate();
-  const { transactions, getCategoryById, selectedCategoryIds } = useExpense();
+  const { getCategoryById } = useExpense();
 
   const dateStr = format(currentDate, 'yyyy-MM-dd');
-  let dayTransactions = transactions.filter(t => t.date === dateStr);
-
-  // Apply category filter
-  if (selectedCategoryIds.length > 0) {
-    dayTransactions = dayTransactions.filter(t => selectedCategoryIds.includes(t.category));
-  }
-
-  // Exclude skipped items from totals
-  dayTransactions = dayTransactions.filter(t => !t.isSkipped);
+  const dayTransactions = transactions.filter(t => t.date === dateStr);
 
   const totalSpent = dayTransactions.reduce((sum, t) => sum + t.amount, 0);
 

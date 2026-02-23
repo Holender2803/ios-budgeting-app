@@ -111,7 +111,7 @@ export function AddExpense() {
     if (categorySource === 'suggestion') {
       // Auto-create rule if suggested category was applied
       addVendorRule({
-        vendor: vendor.trim(),
+        vendorContains: vendor.trim(),
         categoryId,
       });
     }

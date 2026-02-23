@@ -40,7 +40,7 @@ export function Categories() {
     if (!vendor || !selectedCategoryId) return;
 
     addVendorRule({
-      vendor: vendor.trim(),
+      vendorContains: vendor.trim(),
       categoryId: selectedCategoryId,
     });
 
@@ -407,44 +407,47 @@ export function Categories() {
               </div>
             )}
 
-            {vendorRules.map((rule) => {
-              const category = categories.find((c) => c.id === rule.categoryId);
-              const IconComponent = category ? (LucideIcons as any)[category.icon] : null;
+            {vendorRules
+              .filter(rule => rule.source === 'user')
+              .sort((a, b) => b.createdAt - a.createdAt)
+              .map((rule) => {
+                const category = categories.find((c) => c.id === rule.categoryId);
+                const IconComponent = category ? (LucideIcons as any)[category.icon] : null;
 
-              return (
-                <motion.div
-                  key={rule.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm"
-                >
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center"
-                    style={{ backgroundColor: category ? `${category.color}15` : '#f3f4f6' }}
+                return (
+                  <motion.div
+                    key={rule.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm"
                   >
-                    {IconComponent && (
-                      <IconComponent className="w-5 h-5" style={{ color: category?.color }} />
-                    )}
-                  </div>
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center"
+                      style={{ backgroundColor: category ? `${category.color}15` : '#f3f4f6' }}
+                    >
+                      {IconComponent && (
+                        <IconComponent className="w-5 h-5" style={{ color: category?.color }} />
+                      )}
+                    </div>
 
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">
-                      {rule.vendor}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      → {category?.name}
-                    </p>
-                  </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900">
+                        {rule.vendorContains}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        → {category?.name}
+                      </p>
+                    </div>
 
-                  <button
-                    onClick={() => deleteVendorRule(rule.id)}
-                    className="p-2 hover:bg-red-50 rounded-full transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4 text-red-500" />
-                  </button>
-                </motion.div>
-              );
-            })}
+                    <button
+                      onClick={() => deleteVendorRule(rule.id)}
+                      className="p-2 hover:bg-red-50 rounded-full transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-500" />
+                    </button>
+                  </motion.div>
+                );
+              })}
           </div>
         </div>
       </div>
