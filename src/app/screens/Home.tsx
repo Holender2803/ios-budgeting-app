@@ -15,12 +15,13 @@ type TimeView = 'daily' | 'weekly' | 'monthly';
 
 export function Home() {
   const navigate = useNavigate();
-  const { transactions, categories, selectedCategoryIds, recurringExceptions, includeRecurring, setIncludeRecurring, filteredTransactions: allFilteredTransactions } = useExpense();
+  const { transactions: processedTransactions, categories, selectedCategoryIds, setSelectedCategories, recurringExceptions, includeRecurring, setIncludeRecurring, filteredTransactions: allFilteredTransactions } = useExpense();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [timeView, setTimeView] = useState<TimeView>('monthly');
 
   // Navigation handlers
   const handlePrev = () => {
+    setSelectedCategories([]); // Reset filter on period change
     if (timeView === 'daily') {
       setCurrentDate(prev => subDays(prev, 1));
     } else if (timeView === 'weekly') {
@@ -31,6 +32,7 @@ export function Home() {
   };
 
   const handleNext = () => {
+    setSelectedCategories([]); // Reset filter on period change
     if (timeView === 'daily') {
       setCurrentDate(prev => addDays(prev, 1));
     } else if (timeView === 'weekly') {
@@ -41,6 +43,7 @@ export function Home() {
   };
 
   const handleDayClick = (date: string) => {
+    setSelectedCategories([]); // Reset filter when drilling down to a day
     navigate(`/day/${date}`);
   };
 
@@ -62,6 +65,17 @@ export function Home() {
     });
   }, [allFilteredTransactions, rangeStart, rangeEnd]);
 
+  // For the filter list, we need transactions filtered by range/recurring but NOT by category
+  const rangeTransactionsUnfiltered = useMemo(() => {
+    return (processedTransactions as any[]).filter(t => {
+      const tDate = new Date(t.date + 'T00:00:00');
+      const inRange = tDate >= rangeStart && tDate <= rangeEnd;
+      // Also respect the "Include recurring" toggle in the filter counts
+      const recurringMatch = includeRecurring || !t.isRecurring;
+      return inRange && recurringMatch && !t.isSkipped;
+    });
+  }, [processedTransactions, rangeStart, rangeEnd, includeRecurring]);
+
   const currentTotal = rangeTransactions.reduce((sum: number, t: any) => sum + t.amount, 0);
 
   // Get display text for current period
@@ -76,9 +90,9 @@ export function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      {/* Time Selector + Total */}
-      <div className="bg-white border-b border-gray-100">
+    <div className="h-[100dvh] flex flex-col bg-gray-50 overflow-hidden">
+      {/* Row 1: Frozen Header */}
+      <div className="flex-none bg-white border-b border-gray-100 z-20 shadow-sm">
         <div className="max-w-lg mx-auto px-6 pt-8 pb-6">
           {/* Segmented Control */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
@@ -190,44 +204,47 @@ export function Home() {
         </div>
       </div>
 
-      {/* View Content */}
-      <motion.div
-        key={timeView}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.15 }}
-        className="max-w-lg mx-auto"
-      >
-        {timeView === 'monthly' && (
-          <div className="bg-white">
-            <MonthlyCalendar
+      {/* Row 2: Scrollable content */}
+      <div className={`flex-1 min-h-0 ${timeView === 'monthly' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+        <motion.div
+          key={timeView}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.15 }}
+          className="max-w-lg mx-auto pb-10"
+        >
+          {timeView === 'monthly' && (
+            <div className="bg-white">
+              <MonthlyCalendar
+                currentDate={currentDate}
+                onDayClick={handleDayClick}
+                transactions={allFilteredTransactions}
+              />
+            </div>
+          )}
+
+          {timeView === 'weekly' && (
+            <WeeklyCalendar
               currentDate={currentDate}
               onDayClick={handleDayClick}
-              transactions={allFilteredTransactions}
+              transactions={rangeTransactions}
             />
-          </div>
-        )}
+          )}
 
-        {timeView === 'weekly' && (
-          <WeeklyCalendar
-            currentDate={currentDate}
-            onDayClick={handleDayClick}
-            transactions={rangeTransactions}
-          />
-        )}
+          {timeView === 'daily' && (
+            <DailyView
+              currentDate={currentDate}
+              transactions={rangeTransactions}
+            />
+          )}
+        </motion.div>
+      </div>
 
-        {timeView === 'daily' && (
-          <DailyView
-            currentDate={currentDate}
-            transactions={rangeTransactions}
-          />
-        )}
-      </motion.div>
-
-      {/* Category Filter */}
-      <CategoryFilterBar />
-
-      <BottomNav />
+      {/* Row 3: Frozen Footer (Filter + Nav) */}
+      <div className="flex-none bg-white border-t border-gray-100 z-20">
+        <CategoryFilterBar transactions={rangeTransactionsUnfiltered} />
+        <BottomNav />
+      </div>
     </div>
   );
 }
