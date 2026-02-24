@@ -46,12 +46,14 @@ export function generateDemoData(): Transaction[] {
       const amount = vendor.amounts[Math.floor(Math.random() * vendor.amounts.length)];
 
       transactions.push({
-        id: `demo-${i}-${j}`,
+        id: crypto.randomUUID(),
         vendor: vendor.name,
         amount,
         category: vendor.category,
         date: dateStr,
-      });
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      } as any);
     }
   }
 

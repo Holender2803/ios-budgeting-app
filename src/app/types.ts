@@ -14,13 +14,18 @@ export interface Transaction {
   endedAt?: string; // When a rule was "deleted" (cutoff)
   isSkipped?: boolean; // For expanded virtual occurrences
   skipNote?: string;
+  updatedAt?: number; // Added for Supabase Sync resolution
+  deletedAt?: number; // Used as tombstone marker for generic sync logic
 }
 
 export interface RecurringException {
+  id: string; // ruleId-date
   ruleId: string;
   date: string;
   skipped: boolean;
   note?: string;
+  updatedAt?: number;
+  deletedAt?: number;
 }
 
 export interface Category {
@@ -29,6 +34,8 @@ export interface Category {
   icon: string;
   color: string;
   group: string;
+  updatedAt?: number;
+  deletedAt?: number;
 }
 
 export interface VendorRule {
@@ -37,6 +44,8 @@ export interface VendorRule {
   categoryId: string;
   source: 'default' | 'user';
   createdAt: number;
+  updatedAt?: number;
+  deletedAt?: number;
 }
 
 export type ViewMode = 'daily' | 'weekly' | 'monthly';
@@ -45,4 +54,7 @@ export interface Settings {
   notifications: boolean;
   googleCalendarSync: boolean;
   defaultCategoryFilter?: string[]; // Array of category IDs to filter by default
+  lastPullAt?: number; // UTC timestamp of last successful Supabase Pull
+  lastPushAt?: number; // UTC timestamp of last successful Supabase Push
+  lastSyncError?: string; // Message documenting why sync failed
 }

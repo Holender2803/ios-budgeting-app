@@ -33,7 +33,9 @@ export function Settings() {
     stopRecurringRule,
     exportBackup,
     importBackup,
-    clearAllData
+    clearAllData,
+    syncData,
+    isSyncing
   } = useExpense();
 
   const activeRecurringRules = transactions.filter(t => t.isRecurring && t.isActive !== false);
@@ -164,10 +166,10 @@ export function Settings() {
               {/* Cloud Status Indicator */}
               <div className="bg-gray-50 rounded-xl p-4 flex items-start gap-3">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${!supabaseConfigured ? 'bg-gray-200' :
-                    user ? 'bg-green-100' : 'bg-blue-100'
+                  user ? 'bg-green-100' : 'bg-blue-100'
                   }`}>
                   <Cloud className={`w-4 h-4 ${!supabaseConfigured ? 'text-gray-500' :
-                      user ? 'text-green-600' : 'text-blue-600'
+                    user ? 'text-green-600' : 'text-blue-600'
                     }`} />
                 </div>
                 <div>
@@ -182,17 +184,38 @@ export function Settings() {
                 </div>
               </div>
 
-              {/* Sync Placeholders */}
+              {/* Sync Status & Action */}
               {supabaseConfigured && user && (
-                <div className="px-2 space-y-2">
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600">Sync Status</span>
-                    <span className="font-medium text-gray-900">Disabled (TODO)</span>
-                  </div>
+                <div className="px-2 space-y-3">
                   <div className="flex justify-between items-center text-sm">
                     <span className="text-gray-600">Last Sync</span>
-                    <span className="font-medium text-gray-900">Never (TODO)</span>
+                    <span className="font-medium text-gray-900">
+                      {settings.lastPullAt
+                        ? format(new Date(settings.lastPullAt), 'MMM d, h:mm a')
+                        : 'Never'}
+                    </span>
                   </div>
+                  {settings.lastSyncError && (
+                    <div className="text-xs text-red-600 bg-red-50 p-2 rounded-lg border border-red-100">
+                      Sync failed: {settings.lastSyncError}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => {
+                      toast.promise(syncData(), {
+                        loading: 'Syncing...',
+                        success: 'Sync complete',
+                        error: 'Sync failed'
+                      });
+                    }}
+                    disabled={isSyncing}
+                    className="w-full bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-xl p-3 flex items-center justify-center gap-2 transition-colors border border-gray-200 disabled:opacity-50 shadow-sm"
+                  >
+                    <Repeat className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                    <span className="font-medium text-sm">
+                      {isSyncing ? 'Syncing...' : 'Sync Now'}
+                    </span>
+                  </button>
                 </div>
               )}
 

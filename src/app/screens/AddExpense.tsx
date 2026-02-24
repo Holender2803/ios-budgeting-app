@@ -12,13 +12,13 @@ import { toast } from 'sonner';
 
 export function AddExpense() {
   const navigate = useNavigate();
-  const { transactions, addTransaction, categories, addVendorRule, getSuggestedCategory } = useExpense();
+  const { transactions, addTransaction, categories, addVendorRule, getSuggestedCategory, selectedDate } = useExpense();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const [amount, setAmount] = useState('');
   const [vendor, setVendor] = useState('');
   const [categoryId, setCategoryId] = useState(categories[0]?.id || '');
-  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [date, setDate] = useState(selectedDate);
   const [note, setNote] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState<'weekly' | 'monthly'>('monthly');

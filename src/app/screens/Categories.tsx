@@ -239,13 +239,16 @@ export function Categories() {
                       </button>
                     </div>
 
-                    {editingCategory.id.startsWith('custom-') && (
+                    {!editingCategory.id.startsWith('cat-') && (
                       <button
                         onClick={() => {
-                          deleteCategory(editingCategory.id);
-                          setEditingCategory(null);
+                          if (window.confirm('Delete this category and remap all associated transactions to Uncategorized?')) {
+                            deleteCategory(editingCategory.id);
+                            setEditingCategory(null);
+                          }
                         }}
                         className="w-full h-12 flex items-center justify-center gap-2 text-red-500 text-xs font-bold uppercase hover:bg-red-50 rounded-xl transition-colors"
+                        aria-label="Delete category"
                       >
                         <Trash2 className="w-4 h-4" />
                         Delete Category
