@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, addDays, subDays, startOfWeek, endOfWeek, addWeeks, subWeeks, isToday, startOfDay, endOfDay } from 'date-fns';
 import { MonthlyCalendar } from '../components/MonthlyCalendar';
@@ -15,9 +15,14 @@ type TimeView = 'daily' | 'weekly' | 'monthly';
 
 export function Home() {
   const navigate = useNavigate();
-  const { transactions: processedTransactions, categories, selectedCategoryIds, setSelectedCategories, recurringExceptions, includeRecurring, setIncludeRecurring, filteredTransactions: allFilteredTransactions } = useExpense();
+  const { transactions: processedTransactions, categories, selectedCategoryIds, setSelectedCategories, recurringExceptions, includeRecurring, setIncludeRecurring, filteredTransactions: allFilteredTransactions, setSelectedDate } = useExpense();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [timeView, setTimeView] = useState<TimeView>('monthly');
+
+  // Sync selectedDate with currentDate whenever currentDate changes
+  useEffect(() => {
+    setSelectedDate(currentDate.toISOString().split('T')[0]);
+  }, [currentDate, setSelectedDate]);
 
   // Navigation handlers
   const handlePrev = () => {

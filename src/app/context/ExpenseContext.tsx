@@ -1,9 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Transaction, Category, VendorRule, Settings, RecurringException } from '../types';
 import { generateDemoData } from '../utils/generateDemoData';
-import { addWeeks, addMonths, isBefore, isAfter, parseISO, format, addDays, startOfToday, endOfYear, addYears } from 'date-fns';
+import { format, addDays, startOfToday, endOfYear, addYears, isBefore, isAfter, parseISO, addWeeks, addMonths } from 'date-fns';
 import { storage } from '../utils/storage';
 import { toast } from 'sonner';
+import { ensureUUIDs } from '../utils/uuidMigration';
+import { SyncService } from '../../lib/syncService';
+import { useAuth } from './AuthContext';
 
 interface ExpenseContextType {
   transactions: Transaction[];
@@ -37,6 +40,10 @@ interface ExpenseContextType {
   importBackup: (jsonString: string) => Promise<void>;
   clearAllData: () => Promise<void>;
   isHydrated: boolean;
+  syncData: () => Promise<void>;
+  isSyncing: boolean;
+  selectedDate: string;
+  setSelectedDate: (date: string) => void;
 }
 
 const ExpenseContext = createContext<ExpenseContextType | undefined>(undefined);
@@ -82,6 +89,8 @@ const DEFAULT_CATEGORIES: Category[] = [
   // Giving
   { id: 'cat-gifts', name: 'Gifts', icon: 'Gift', color: '#F2C94C', group: 'Giving' },
   { id: 'cat-donations', name: 'Donations', icon: 'Heart', color: '#EB5757', group: 'Giving' },
+  // Fallback
+  { id: 'cat-uncategorized', name: 'Uncategorized', icon: 'Tag', color: '#94A3B8', group: 'Other' },
 ];
 
 export const CANONICAL_GROUPS = [
@@ -90,7 +99,8 @@ export const CANONICAL_GROUPS = [
   'Getting Around',
   'Health & Growth',
   'Money Matters',
-  'Giving'
+  'Giving',
+  'Other'
 ] as const;
 
 export const DEFAULT_VENDOR_RULES: Omit<VendorRule, 'id' | 'source' | 'createdAt'>[] = [
@@ -302,6 +312,8 @@ const DEFAULT_SETTINGS: Settings = {
 };
 
 export function ExpenseProvider({ children }: { children: React.ReactNode }) {
+  const { user, supabaseConfigured } = useAuth();
+  const [isSyncing, setIsSyncing] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [vendorRules, setVendorRules] = useState<VendorRule[]>([]);
@@ -310,6 +322,37 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
   const [recurringExceptions, setRecurringExceptions] = useState<RecurringException[]>([]);
   const [includeRecurring, setIncludeRecurring] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+
+  const syncData = React.useCallback(async () => {
+    if (!supabaseConfigured || !user) return;
+    setIsSyncing(true);
+    try {
+      await SyncService.sync(
+        transactions,
+        categories,
+        vendorRules,
+        recurringExceptions,
+        settings,
+        (newTransactions, newCategories, newRules, newExceptions, newSettings) => {
+          setTransactions(newTransactions);
+          setCategories(newCategories);
+          setVendorRules(newRules);
+          setRecurringExceptions(newExceptions);
+          setSettings(prev => ({ ...prev, ...newSettings }));
+        }
+      );
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [supabaseConfigured, user, transactions, categories, vendorRules, settings, recurringExceptions]);
+
+  useEffect(() => {
+    if (isHydrated && user && supabaseConfigured) {
+      syncData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHydrated, user?.id, supabaseConfigured]);
 
   // Load initial data from IndexedDB (with localStorage migration) on mount
   useEffect(() => {
@@ -353,69 +396,96 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem('indexeddb_migrated', 'true');
       }
 
-      // 3. Hydrate state
-      if (dbTransactions.length > 0) {
-        setTransactions(dbTransactions);
-      } else {
-        const demoData = generateDemoData();
-        setTransactions(demoData);
-        for (const t of demoData) await storage.set('transactions', t.id, t);
-      }
+      // 3. Pipeline initialization
+      let pipelineTransactions = dbTransactions.length > 0 ? dbTransactions : generateDemoData();
+      let pipelineCategories = dbCategories.length > 0 ? dbCategories : DEFAULT_CATEGORIES;
+      let pipelineRules = dbRules;
+      let pipelineExceptions = dbExceptions;
 
+      let needsSave = false;
+
+      // Fix missing defaults
       if (dbCategories.length > 0) {
-        // Still apply the "missing defaults" logic to dbCategories
         const missingDefaults = DEFAULT_CATEGORIES.filter(
-          defCat => !dbCategories.some(userCat => userCat.name === defCat.name || userCat.id === defCat.id)
+          defCat => !pipelineCategories.some(userCat => userCat.name === defCat.name || userCat.id === defCat.id)
         );
-        const merged = [...dbCategories, ...missingDefaults];
-        // Deduplication safety
+        const merged = [...pipelineCategories, ...missingDefaults];
         const seenIds = new Set<string>();
         const deduplicated: Category[] = [];
+        let didDeduplicate = false;
         merged.forEach(cat => {
           if (seenIds.has(cat.id)) {
-            deduplicated.push({ ...cat, id: `fix-${Date.now()}-${Math.random().toString(36).substr(2, 5)}` });
+            deduplicated.push({ ...cat, id: crypto.randomUUID(), updatedAt: Date.now() });
+            didDeduplicate = true;
           } else {
             seenIds.add(cat.id);
             deduplicated.push(cat);
           }
         });
-        setCategories(deduplicated);
-        for (const c of deduplicated) await storage.set('categories', c.id, c);
-      } else {
-        setCategories(DEFAULT_CATEGORIES);
-        for (const c of DEFAULT_CATEGORIES) await storage.set('categories', c.id, c);
+        pipelineCategories = deduplicated;
+        if (didDeduplicate) needsSave = true;
       }
 
-      if (dbRules.length > 0) setVendorRules(dbRules);
+      // 4. Run Legacy Migration 
+      const migrationVersion = localStorage.getItem('category_schema_v1');
+      const hasLegacy = pipelineCategories.some(c => Object.keys(LEGACY_MAPPING).includes(normalizeLabel(c.name)));
+
+      if (!migrationVersion || hasLegacy) {
+        const { categories: migratedCats, transactions: migratedTrans, vendorRules: migratedRules, changed } = migrateData(
+          pipelineCategories,
+          pipelineTransactions,
+          pipelineRules
+        );
+
+        if (changed || !migrationVersion) {
+          pipelineCategories = migratedCats;
+          pipelineTransactions = migratedTrans;
+          pipelineRules = migratedRules;
+          needsSave = true;
+          localStorage.setItem('category_schema_v1', 'true');
+        }
+      }
+
+      // 5. Enforce UUID Consistency
+      const uuidMigrationResult = ensureUUIDs(pipelineTransactions, pipelineCategories, pipelineRules, pipelineExceptions);
+      if (uuidMigrationResult.changed) {
+        needsSave = true;
+        for (const [oldId, _] of uuidMigrationResult.uuidMap.entries()) {
+          await storage.remove('transactions', oldId);
+          await storage.remove('categories', oldId);
+          await storage.remove('vendorRules', oldId);
+        }
+        for (const e of pipelineExceptions) {
+          if (uuidMigrationResult.uuidMap.has(e.ruleId)) {
+            await storage.remove('recurringExceptions', `${e.ruleId}-${e.date}`);
+          }
+        }
+        pipelineCategories = uuidMigrationResult.categories;
+        pipelineTransactions = uuidMigrationResult.transactions;
+        pipelineRules = uuidMigrationResult.vendorRules;
+        pipelineExceptions = uuidMigrationResult.exceptions;
+      }
+
+      // 6. Final State Commit
+      setCategories(pipelineCategories);
+      setTransactions(pipelineTransactions);
+      setVendorRules(pipelineRules);
+      setRecurringExceptions(pipelineExceptions);
+
       if (dbSettings) {
         setSettings(dbSettings);
         if (dbSettings.defaultCategoryFilter) {
           setSelectedCategoryIds(dbSettings.defaultCategoryFilter);
         }
       }
-      if (dbExceptions.length > 0) setRecurringExceptions(dbExceptions);
 
-      // 4. Run Migration (idempotent, safer)
-      const migrationVersion = localStorage.getItem('category_schema_v1');
-      const hasLegacy = dbCategories.some(c => Object.keys(LEGACY_MAPPING).includes(normalizeLabel(c.name)));
-
-      if (!migrationVersion || hasLegacy) {
-        const { categories: migratedCats, transactions: migratedTrans, vendorRules: migratedRules, changed } = migrateData(
-          dbCategories.length > 0 ? dbCategories : DEFAULT_CATEGORIES,
-          dbTransactions.length > 0 ? dbTransactions : [],
-          dbRules.length > 0 ? dbRules : []
-        );
-
-        if (changed || !migrationVersion) {
-          setCategories(migratedCats);
-          setTransactions(migratedTrans);
-          setVendorRules(migratedRules);
-          // Persist immediately
-          for (const c of migratedCats) await storage.set('categories', c.id, c);
-          for (const t of migratedTrans) await storage.set('transactions', t.id, t);
-          for (const r of migratedRules) await storage.set('vendorRules', r.id, r);
-          localStorage.setItem('category_schema_v1', 'true');
-        }
+      // 7. Persist pipeline if mutated
+      // If we loaded demo data, it also counts as needsSave.
+      if (needsSave || dbTransactions.length === 0) {
+        for (const c of pipelineCategories) await storage.set('categories', c.id, c);
+        for (const t of pipelineTransactions) await storage.set('transactions', t.id, t);
+        for (const r of pipelineRules) await storage.set('vendorRules', r.id, r);
+        for (const e of pipelineExceptions) await storage.set('recurringExceptions', `${e.ruleId}-${e.date}`, e);
       }
 
       setIsHydrated(true);
@@ -451,7 +521,8 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
 
         while (!isAfter(nextDate, limit)) {
           const dateStr = format(nextDate, 'yyyy-MM-dd');
-          const exception = recurringExceptions.find(e => e.ruleId === t.id && e.date === dateStr);
+          // Important: only find active exceptions (not deleted tombstones)
+          const exception = recurringExceptions.find(e => e.ruleId === t.id && e.date === dateStr && !e.deletedAt);
 
           expanded.push({
             ...t,
@@ -474,8 +545,11 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
 
   // 2. Expand and process transactions
   const processedTransactions = React.useMemo(() => {
+    // 0. Filter out cleanly deleted items (tombstones)
+    const activeTransactions = transactions.filter(t => !t.deletedAt);
+
     // 1. Apply vendor rules first
-    const withRules = transactions.map((t) => {
+    const withRules = activeTransactions.map((t) => {
       const suggestedCategory = getSuggestedCategory(t.vendor);
       if (suggestedCategory) {
         return { ...t, category: suggestedCategory };
@@ -552,26 +626,44 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
   const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
     const newTransaction = {
       ...transaction,
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       isActive: transaction.isRecurring ? true : undefined,
+      updatedAt: Date.now(),
     };
     setTransactions((prev) => [...prev, newTransaction]);
     await storage.set('transactions', newTransaction.id, newTransaction);
   };
 
   const updateTransaction = async (id: string, updates: Partial<Transaction>) => {
+    const now = Date.now();
     setTransactions((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, ...updates } : t))
+      prev.map((t) => (t.id === id ? { ...t, ...updates, updatedAt: now } : t))
     );
     const existing = transactions.find(t => t.id === id);
     if (existing) {
-      await storage.set('transactions', id, { ...existing, ...updates });
+      await storage.set('transactions', id, { ...existing, ...updates, updatedAt: now });
     }
   };
 
   const deleteTransaction = async (id: string) => {
-    setTransactions((prev) => prev.filter((t) => t.id !== id));
-    await storage.remove('transactions', id);
+    const now = Date.now();
+
+    // 1. Try exact match (one-time or base rule)
+    const exactMatch = transactions.find(t => t.id === id);
+    if (exactMatch) {
+      setTransactions((prev) => prev.map((t) => (t.id === id ? { ...t, deletedAt: now, updatedAt: now } : t)));
+      await storage.set('transactions', id, { ...exactMatch, deletedAt: now, updatedAt: now });
+      return;
+    }
+
+    // 2. Try virtual ID (recurring instance)
+    const parentRule = transactions.find(t => id.startsWith(`${t.id}-`));
+    if (parentRule) {
+      const datePart = id.substring(parentRule.id.length + 1);
+      await skipOccurrence(parentRule.id, datePart, 'Deleted');
+      toast.success('Occurrence removed');
+      return;
+    }
   };
 
   const validateCategory = (name: string, group: string, id?: string) => {
@@ -598,7 +690,8 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
 
     const newCategory = {
       ...category,
-      id: `custom-${Date.now()}`,
+      id: crypto.randomUUID(),
+      updatedAt: Date.now(),
     };
     setCategories((prev) => [...prev, newCategory]);
     await storage.set('categories', newCategory.id, newCategory);
@@ -610,59 +703,80 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
 
     if (!validateCategory(updates.name ?? existing.name, updates.group ?? existing.group, id)) return;
 
+    const now = Date.now();
     setCategories((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...updates } : c))
+      prev.map((c) => (c.id === id ? { ...c, ...updates, updatedAt: now } : c))
     );
-    await storage.set('categories', id, { ...existing, ...updates });
+    await storage.set('categories', id, { ...existing, ...updates, updatedAt: now });
   };
 
   const deleteCategory = (id: string) => {
-    // Only allow deleting custom categories for safety (though UI should handle this)
-    if (!id.startsWith('custom-')) {
+    // Only allow deleting user-created categories (not starting with cat-)
+    if (id.startsWith('cat-')) {
       toast.error('System categories cannot be deleted');
       return;
     }
 
+    const now = Date.now();
+    const fallbackId = 'cat-uncategorized';
+
+    // 1. Update State immediately
     setTransactions((prev) =>
-      prev.map((t) => (t.category === id ? { ...t, category: 'cat-shopping' } : t))
+      prev.map((t) => (t.category === id ? { ...t, category: fallbackId, updatedAt: now } : t))
     );
     setVendorRules((prev) =>
-      prev.map((r) => (r.categoryId === id ? { ...r, categoryId: 'cat-shopping' } : r))
+      prev.map((r) => (r.categoryId === id ? { ...r, categoryId: fallbackId, updatedAt: now } : r))
     );
-    setCategories((prev) => prev.filter((c) => c.id !== id));
+    setCategories((prev) =>
+      prev.map((c) => c.id === id ? { ...c, deletedAt: now, updatedAt: now } : c)
+    );
 
+    // 2. Persist to Storage
     const removeOperations = async () => {
-      // Need to re-sync all transactions that changed
-      const affectedTrans = transactions.filter(t => t.category === id);
+      // Remap Transactions
+      const allTransactions = await storage.getAll<Transaction>('transactions');
+      const affectedTrans = allTransactions.filter(t => t.category === id);
       for (const t of affectedTrans) {
-        await storage.set('transactions', t.id, { ...t, category: 'cat-shopping' });
+        await storage.set('transactions', t.id, { ...t, category: fallbackId, updatedAt: now });
       }
-      const affectedRules = vendorRules.filter(r => r.categoryId === id);
+
+      // Remap Vendor Rules
+      const allRules = await storage.getAll<VendorRule>('vendorRules');
+      const affectedRules = allRules.filter(r => r.categoryId === id);
       for (const r of affectedRules) {
-        await storage.set('vendorRules', r.id, { ...r, categoryId: 'cat-shopping' });
+        await storage.set('vendorRules', r.id, { ...r, categoryId: fallbackId, updatedAt: now });
       }
-      await storage.remove('categories', id);
+
+      // Soft Delete Category
+      const existing = categories.find(c => c.id === id);
+      if (existing) {
+        await storage.set('categories', id, { ...existing, deletedAt: now, updatedAt: now });
+      }
     };
     removeOperations();
 
-    // Sync to storage is handled by useEffects, but we'll let the state update happen
     toast.success('Category removed and transactions remapped');
   };
 
   const addVendorRule = async (rule: Omit<VendorRule, 'id' | 'source' | 'createdAt'>) => {
     const newRule: VendorRule = {
       ...rule,
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       source: 'user',
       createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
     setVendorRules((prev) => [...prev, newRule]);
     await storage.set('vendorRules', newRule.id, newRule);
   };
 
   const deleteVendorRule = async (id: string) => {
-    setVendorRules((prev) => prev.filter((r) => r.id !== id));
-    await storage.remove('vendorRules', id);
+    const now = Date.now();
+    setVendorRules((prev) => prev.map((r) => r.id === id ? { ...r, deletedAt: now, updatedAt: now } : r));
+    const existing = vendorRules.find(r => r.id === id);
+    if (existing) {
+      await storage.set('vendorRules', id, { ...existing, deletedAt: now, updatedAt: now });
+    }
   };
 
   const updateSettings = (updates: Partial<Settings>) => {
@@ -670,11 +784,11 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
   };
 
   const getCategoryById = (id: string) => {
-    return categories.find((c) => c.id === id);
+    return categories.find((c) => c.id === id && !c.deletedAt);
   };
 
   const getTransactionsByDate = (date: string) => {
-    return transactions.filter((t) => t.date === date);
+    return transactions.filter((t) => t.date === date && !t.deletedAt);
   };
 
   const setSelectedCategories = (categoryIds: string[]) => {
@@ -721,17 +835,31 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
   };
 
   const skipOccurrence = async (ruleId: string, date: string, note?: string) => {
-    const newException = { ruleId, date, skipped: true, note };
+    const id = `${ruleId}-${date}`;
+    const newException: RecurringException = {
+      id,
+      ruleId,
+      date,
+      skipped: true,
+      note,
+      updatedAt: Date.now()
+    };
     setRecurringExceptions(prev => [
-      ...prev.filter(e => !(e.ruleId === ruleId && e.date === date)),
+      ...prev.filter(e => e.id !== id),
       newException
     ]);
-    await storage.set('recurringExceptions', `${ruleId}-${date}`, newException);
+    await storage.set('recurringExceptions', id, newException);
   };
 
   const unskipOccurrence = async (ruleId: string, date: string) => {
-    setRecurringExceptions(prev => prev.filter(e => !(e.ruleId === ruleId && e.date === date)));
-    await storage.remove('recurringExceptions', `${ruleId}-${date}`);
+    const id = `${ruleId}-${date}`;
+    const now = Date.now();
+    setRecurringExceptions(prev => prev.map(e => (e.id === id ? { ...e, deletedAt: now, updatedAt: now } : e)));
+    const existing = recurringExceptions.find(e => e.id === id);
+    if (existing) {
+      const updated = { ...existing, deletedAt: now, updatedAt: now };
+      await storage.set('recurringExceptions', id, updated);
+    }
   };
 
   const stopRecurringRule = (id: string) => {
@@ -872,8 +1000,8 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     <ExpenseContext.Provider
       value={{
         transactions: processedTransactions,
-        categories,
-        vendorRules,
+        categories: categories.filter(c => !c.deletedAt),
+        vendorRules: vendorRules.filter(r => !r.deletedAt),
         settings,
         selectedCategoryIds,
         addTransaction,
@@ -901,7 +1029,11 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
         exportBackup,
         importBackup,
         clearAllData,
-        isHydrated
+        isHydrated,
+        syncData,
+        isSyncing,
+        selectedDate,
+        setSelectedDate,
       }}
     >
       {children}

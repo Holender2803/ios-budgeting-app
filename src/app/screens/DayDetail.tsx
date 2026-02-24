@@ -5,11 +5,18 @@ import { useExpense } from '../context/ExpenseContext';
 import { TransactionItem } from '../components/TransactionItem';
 import { motion } from 'motion/react';
 import { downloadICS } from '../utils/icsExport';
+import { useEffect } from 'react';
 
 export function DayDetail() {
   const { date } = useParams<{ date: string }>();
   const navigate = useNavigate();
-  const { transactions, categories, getCategoryById, recurringExceptions } = useExpense();
+  const { transactions, categories, getCategoryById, recurringExceptions, setSelectedDate } = useExpense();
+
+  useEffect(() => {
+    if (date) {
+      setSelectedDate(date);
+    }
+  }, [date, setSelectedDate]);
 
   if (!date) {
     navigate('/');

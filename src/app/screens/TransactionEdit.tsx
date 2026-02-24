@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ChevronLeft, Trash2 } from 'lucide-react';
+import { ChevronLeft, Trash2, Repeat } from 'lucide-react';
 import { useExpense } from '../context/ExpenseContext';
 import { CategoryPicker } from '../components/category/CategoryPicker';
 import { Input } from '../components/ui/input';
@@ -12,11 +12,23 @@ import { toast } from 'sonner';
 export function TransactionEdit() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { transactions, updateTransaction, updateRecurringRule, deleteTransaction, categories, addVendorRule } = useExpense();
+  const {
+    transactions,
+    updateTransaction,
+    updateRecurringRule,
+    deleteTransaction,
+    categories,
+    addVendorRule,
+    isHydrated
+  } = useExpense();
 
-  // Handle virtual IDs (e.g., "123-2026-02-21") by finding the parent transaction
-  const baseId = id?.includes('-') ? id.split('-')[0] : id;
-  const transaction = transactions.find((t) => t.id === baseId);
+  // Robust ID lookup for both standard UUIDs and virtual recurring IDs (e.g., uuid-2026-02-21)
+  const transaction = transactions.find((t) => {
+    if (t.id === id) return true;
+    // Check if the current id is a virtual child of this transaction
+    if (id?.startsWith(`${t.id}-`)) return true;
+    return false;
+  });
 
   const [vendor, setVendor] = useState(transaction?.vendor || '');
   const [amount, setAmount] = useState(transaction?.amount.toString() || '');
@@ -28,9 +40,50 @@ export function TransactionEdit() {
   const [endDate, setEndDate] = useState(transaction?.endDate || '');
   const [categorySource, setCategorySource] = useState<'manual' | 'suggestion'>('manual');
 
+  // 3. Keep local state in sync if transaction changes (important for async hydration/updates)
+  useEffect(() => {
+    if (transaction) {
+      setVendor(transaction.vendor);
+      setAmount(transaction.amount.toString());
+      setCategoryId(transaction.category);
+      setDate(transaction.date);
+      setNote(transaction.note || '');
+      setIsRecurring(transaction.isRecurring || false);
+      setRecurrenceType(transaction.recurrenceType || 'monthly');
+      setEndDate(transaction.endDate || '');
+    }
+  }, [transaction]);
+
+  // 1. Wait for hydration
+  if (!isHydrated) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black" />
+      </div>
+    );
+  }
+
+  // 2. Handle missing transaction with a proper UI instead of blank/redirect
   if (!transaction) {
-    navigate('/');
-    return null;
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 text-center">
+        <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 max-w-sm w-full space-y-4">
+          <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto">
+            <Trash2 className="w-8 h-8 text-gray-300" />
+          </div>
+          <h2 className="text-xl font-bold text-gray-900">Transaction not found</h2>
+          <p className="text-gray-500 text-sm">
+            This transaction may have been deleted or is still being synchronized from the cloud.
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className="w-full py-3 bg-black text-white rounded-xl font-semibold hover:bg-gray-800 transition-colors"
+          >
+            Go back home
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const handleVendorChange = (newVendor: string) => {
@@ -100,8 +153,10 @@ export function TransactionEdit() {
             <h1 className="text-xl font-semibold text-gray-900">Edit Expense</h1>
 
             <button
+              type="button"
               onClick={handleDelete}
-              className="p-2 hover:bg-red-50 rounded-full transition-colors"
+              className="p-2 hover:bg-red-50 rounded-full transition-colors relative z-20"
+              aria-label="Delete expense"
             >
               <Trash2 className="w-6 h-6 text-red-500" />
             </button>
