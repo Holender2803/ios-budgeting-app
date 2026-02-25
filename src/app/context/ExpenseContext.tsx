@@ -961,10 +961,25 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
 
   const clearAllData = async () => {
     try {
-      // Clear all existing data from DB
-      await storage.clearAll();
+      // ── 1. Wipe Supabase data (if signed in) ──────────────────────────────
+      const { supabase } = await import('../../lib/supabaseClient');
+      if (supabase) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user?.id) {
+          const uid = session.user.id;
+          // Hard-delete all user rows (independent — one failure won't block others)
+          const tables = ['expenses', 'categories', 'vendor_rules', 'recurring_exceptions'] as const;
+          await Promise.allSettled(
+            tables.map(table =>
+              supabase.from(table).delete().eq('user_id', uid)
+                .then(({ error }) => { if (error) console.warn(`Supabase clear ${table}:`, error.message); })
+            )
+          );
+        }
+      }
 
-      // Clear legacy localStorage keys
+      // ── 2. Wipe local storage ─────────────────────────────────────────────
+      await storage.clearAll();
       localStorage.removeItem('transactions');
       localStorage.removeItem('categories');
       localStorage.removeItem('vendorRules');
@@ -973,7 +988,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem('indexeddb_migrated');
       localStorage.removeItem('category_schema_v1');
 
-      // Reset state
+      // ── 3. Reset React state ──────────────────────────────────────────────
       setTransactions([]);
       setCategories(DEFAULT_CATEGORIES);
       setVendorRules([]);
@@ -982,12 +997,13 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       setSelectedCategoryIds([]);
       setIncludeRecurring(false);
 
-      toast.success('All local data cleared');
+      toast.success('All data cleared');
     } catch (error) {
       console.error('Clear data failed:', error);
       toast.error('Failed to clear data');
     }
   };
+
 
   if (!isHydrated) {
     return (
