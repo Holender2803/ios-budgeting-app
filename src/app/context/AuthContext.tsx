@@ -9,6 +9,7 @@ interface AuthContextType {
     loading: boolean;
     supabaseConfigured: boolean;
     signOut: () => Promise<void>;
+    signInWithGoogle: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,7 +27,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return;
         }
 
-        // Get initial session
+        // Get initial session (handles returning from OAuth redirect)
         supabase.auth.getSession().then(({ data: { session }, error }) => {
             if (error) {
                 console.error('Error getting session:', error);
@@ -37,7 +38,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setLoading(false);
         });
 
-        // Listen for auth changes
+        // Listen for auth changes (fires after OAuth redirect)
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setSession(session);
             setUser(session?.user ?? null);
@@ -60,6 +61,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
     };
 
+    const handleSignInWithGoogle = async () => {
+        if (!supabaseConfigured) return;
+        try {
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    // Dynamic redirectTo so it works on both localhost and Vercel
+                    redirectTo: window.location.origin,
+                },
+            });
+            if (error) throw error;
+            // Browser will redirect to Google — nothing more to do here
+        } catch (error) {
+            console.error('Google sign-in error:', error);
+            // Re-throw so AuthModal can display a non-blocking error
+            throw error;
+        }
+    };
+
     return (
         <AuthContext.Provider
             value={{
@@ -68,6 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 loading,
                 supabaseConfigured,
                 signOut: handleSignOut,
+                signInWithGoogle: handleSignInWithGoogle,
             }}
         >
             {children}
