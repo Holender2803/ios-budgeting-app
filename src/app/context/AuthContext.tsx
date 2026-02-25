@@ -7,6 +7,7 @@ import {
     syncGoogleCalendar,
     disconnectGoogleCalendar,
     CalendarStatus,
+    LocalTransaction,
 } from '../../lib/calendarService';
 import { toast } from 'sonner';
 
@@ -24,7 +25,7 @@ interface AuthContextType {
     calendarStatusLoading: boolean;
     connectGoogleCalendar: () => Promise<void>;
     disconnectGoogleCalendar: () => Promise<void>;
-    syncCalendar: () => Promise<void>;
+    syncCalendar: (transactions: LocalTransaction[]) => Promise<void>;
     isSyncingCalendar: boolean;
     refreshCalendarStatus: () => Promise<void>;
 }
@@ -160,11 +161,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         toast.success('Google Calendar disconnected');
     };
 
-    const handleSyncCalendar = async () => {
+    const handleSyncCalendar = async (transactions: LocalTransaction[]) => {
         if (isSyncingCalendar) return;
         setIsSyncingCalendar(true);
+        console.log('[CalendarSync] Starting sync with', transactions.length, 'local transactions');
         try {
-            const result = await syncGoogleCalendar();
+            const result = await syncGoogleCalendar(transactions);
             toast.success(`Synced ${result.synced} day${result.synced !== 1 ? 's' : ''} to Google Calendar`);
             await refreshCalendarStatus();
         } catch (error: any) {

@@ -139,19 +139,36 @@ export async function syncGoogleCalendar(
         category: t.category,
     }));
 
+    console.log(
+        "[CalendarService] syncGoogleCalendar — total local:", localTransactions.length,
+        "| 90-day cutoff:", cutoffStr,
+        "| sending:", recentTransactions.length, "transactions"
+    );
+
     const { data, error } = await supabase.functions.invoke("google-calendar-sync", {
         body: { transactions: recentTransactions },
         headers: { Authorization: `Bearer ${accessToken}` },
     });
 
     if (error) {
-        throw new Error((error as any)?.message ?? "Calendar sync failed");
+        const msg = (error as any)?.message ?? "Calendar sync failed";
+        console.error("[CalendarService] Sync error:", msg);
+        throw new Error(msg);
     }
 
-    return {
+    // Surface any Google Calendar API error the edge function captured
+    const responseError = (data as any)?.error;
+    if (responseError) {
+        console.error("[CalendarService] Calendar API error from edge function:", responseError);
+        throw new Error(responseError);
+    }
+
+    const result = {
         synced: (data as any)?.synced ?? 0,
         deleted: (data as any)?.deleted ?? 0,
     };
+    console.log("[CalendarService] Sync response:", result);
+    return result;
 }
 
 

@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { AuthModal } from '../components/AuthModal';
 import { useState } from 'react';
+import type { LocalTransaction } from '../../lib/calendarService';
 
 export function Settings() {
   const navigate = useNavigate();
@@ -36,6 +37,7 @@ export function Settings() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [calendarConnecting, setCalendarConnecting] = useState(false);
   const {
+    transactions,
     settings,
     updateSettings,
     getCategoryById,
@@ -50,6 +52,23 @@ export function Settings() {
     updateSettings({ defaultCategoryFilter: undefined });
     toast.success('Default filter cleared');
   };
+
+  // Build the LocalTransaction[] payload for Google Calendar sync:
+  // • Resolves category IDs → human-readable names (e.g. "cat-coffee" → "Coffee & Drinks")
+  // • Excludes future-dated & skipped transactions (avoids inflated totals from recurring expansions)
+  // • Excludes deleted transactions
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const buildLocalTxs = (): LocalTransaction[] =>
+    transactions
+      .filter(t => !t.deletedAt && !t.isSkipped && t.date <= today)
+      .map(t => ({
+        id: t.id,
+        date: t.date,
+        amount: t.amount,
+        // Resolve to the display name so Google Calendar shows "Coffee & Drinks", not "cat-coffee"
+        category: getCategoryById(t.category)?.name ?? t.category,
+        deletedAt: t.deletedAt,
+      }));
 
   const defaultFilterCategories = settings.defaultCategoryFilter?.map(id => getCategoryById(id)?.name).filter(Boolean).join(', ');
 
@@ -209,20 +228,22 @@ export function Settings() {
                     </div>
                   )}
 
-                  {/* Auto-sync toggle (future-ready) */}
+                  {/* Auto-sync toggle */}
                   <div className="flex items-center justify-between px-1">
                     <span className="text-sm text-gray-600">Auto-sync</span>
                     <Switch
                       checked={settings.googleCalendarAutoSync ?? false}
-                      onCheckedChange={(v) => updateSettings({ googleCalendarAutoSync: v })}
+                      onCheckedChange={async (v) => {
+                        updateSettings({ googleCalendarAutoSync: v });
+                        // Immediately sync when the user enables auto-sync
+                        if (v) await syncCalendar(buildLocalTxs());
+                      }}
                     />
                   </div>
 
                   {/* Sync Now button */}
                   <button
-                    onClick={async () => {
-                      await syncCalendar();
-                    }}
+                    onClick={() => syncCalendar(buildLocalTxs())}
                     disabled={isSyncingCalendar}
                     className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl p-3 flex items-center justify-center gap-2 transition-colors border border-blue-100 disabled:opacity-50 shadow-sm"
                   >
