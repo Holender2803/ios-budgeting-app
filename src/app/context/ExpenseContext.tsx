@@ -309,6 +309,7 @@ const migrateData = (
 const DEFAULT_SETTINGS: Settings = {
   notifications: true,
   googleCalendarSync: false,
+  googleCalendarAutoSync: false,
 };
 
 export function ExpenseProvider({ children }: { children: React.ReactNode }) {

@@ -53,8 +53,18 @@ export type ViewMode = 'daily' | 'weekly' | 'monthly';
 export interface Settings {
   notifications: boolean;
   googleCalendarSync: boolean;
+  googleCalendarAutoSync: boolean; // Future-ready: auto-sync toggle when connected
   defaultCategoryFilter?: string[]; // Array of category IDs to filter by default
   lastPullAt?: number; // UTC timestamp of last successful Supabase Pull
   lastPushAt?: number; // UTC timestamp of last successful Supabase Push
   lastSyncError?: string; // Message documenting why sync failed
+}
+
+export interface GoogleCalendarStatus {
+  connected: boolean;
+  calendarId: string | null;
+  connectedAt: string | null;
+  lastSyncAt: string | null;
+  syncError: string | null;
+  status: string | null;
 }
