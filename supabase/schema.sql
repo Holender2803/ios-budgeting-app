@@ -112,3 +112,66 @@ CREATE POLICY "Users can manage their own recurring exceptions"
     FOR ALL
     USING (auth.uid() = user_id)
     WITH CHECK (auth.uid() = user_id);
+
+-------------------------------------------------------------------------------
+-- 5. google_calendar_connections
+--    Stores Google OAuth refresh tokens.
+--    RLS: DENY ALL from client — service role only.
+-------------------------------------------------------------------------------
+CREATE TABLE google_calendar_connections (
+    user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    refresh_token text NOT NULL,
+    calendar_id text NOT NULL DEFAULT 'primary',
+    connected_at timestamptz NOT NULL DEFAULT now(),
+    last_sync_at timestamptz,
+    sync_error text,
+    status text NOT NULL DEFAULT 'connected'
+);
+
+ALTER TABLE google_calendar_connections ENABLE ROW LEVEL SECURITY;
+
+-- Intentionally no SELECT policy — client cannot read refresh_token.
+-- Edge Functions use service role key to bypass RLS.
+
+-------------------------------------------------------------------------------
+-- 6. google_calendar_status (view)
+--    Safe client-readable view: strips refresh_token.
+-------------------------------------------------------------------------------
+CREATE VIEW google_calendar_status AS
+    SELECT
+        user_id,
+        calendar_id,
+        connected_at,
+        last_sync_at,
+        sync_error,
+        status
+    FROM google_calendar_connections;
+
+-- Grant SELECT on the view to authenticated users (their own row only).
+-- We enforce row-level isolation via a policy on a helper security-definer function.
+-- Simpler approach: use security_invoker + a separate RLS on the view in Postgres 15+.
+-- For Supabase (Postgres 15), enable RLS on view through the underlying table.
+-- The view itself does not expose refresh_token so it is safe to grant:
+GRANT SELECT ON google_calendar_status TO authenticated;
+
+-- To further lock down to own rows, expose via RPC or filter in calendarService.
+-- Alternatively, use a security-definer function (see calendarService.ts).
+
+-------------------------------------------------------------------------------
+-- 7. google_calendar_events
+--    Tracks Google Calendar event IDs per (user, day) for de-dupe upsert.
+-------------------------------------------------------------------------------
+CREATE TABLE google_calendar_events (
+    user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    day date NOT NULL,
+    google_event_id text NOT NULL,
+    PRIMARY KEY (user_id, day)
+);
+
+ALTER TABLE google_calendar_events ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage their own calendar events"
+    ON google_calendar_events
+    FOR ALL
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);

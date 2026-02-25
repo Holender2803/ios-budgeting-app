@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router';
-import { ChevronRight, Bell, Calendar, Shield, Tag, ChevronLeft, Filter, Repeat, Trash2, StopCircle, User as UserIcon, LogOut, Cloud } from 'lucide-react';
+import { ChevronRight, Bell, Calendar, Shield, Tag, Repeat, Trash2, User as UserIcon, LogOut, Cloud, RefreshCw, Unplug, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useExpense } from '../context/ExpenseContext';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { Switch } from '../components/ui/switch';
 import {
   AlertDialog,
@@ -22,23 +22,29 @@ import { useState } from 'react';
 
 export function Settings() {
   const navigate = useNavigate();
-  const { user, supabaseConfigured, signOut } = useAuth();
+  const {
+    user,
+    supabaseConfigured,
+    signOut,
+    calendarStatus,
+    calendarStatusLoading,
+    connectGoogleCalendar,
+    disconnectGoogleCalendar: doDisconnect,
+    syncCalendar,
+    isSyncingCalendar,
+  } = useAuth();
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [calendarConnecting, setCalendarConnecting] = useState(false);
   const {
     settings,
     updateSettings,
-    categories,
     getCategoryById,
-    transactions,
-    stopRecurringRule,
     exportBackup,
     importBackup,
     clearAllData,
     syncData,
     isSyncing
   } = useExpense();
-
-  const activeRecurringRules = transactions.filter(t => t.isRecurring && t.isActive !== false);
 
   const clearDefaultFilter = () => {
     updateSettings({ defaultCategoryFilter: undefined });
@@ -56,14 +62,7 @@ export function Settings() {
       onChange: (value: boolean) => updateSettings({ notifications: value }),
       type: 'toggle' as const,
     },
-    {
-      icon: Calendar,
-      label: 'Google Calendar Sync',
-      description: 'Sync expenses to calendar',
-      value: settings.googleCalendarSync,
-      onChange: (value: boolean) => updateSettings({ googleCalendarSync: value }),
-      type: 'toggle' as const,
-    },
+    // Google Calendar Sync is handled by a dedicated card below — removed from this list
     {
       icon: Repeat,
       label: 'Recurring Payments',
@@ -100,64 +99,180 @@ export function Settings() {
         <div className="max-w-lg mx-auto px-4 py-6 space-y-6 pb-10">
           {/* Settings List */}
           <div className="space-y-2">
-            {settingsItems.map((item, index) => {
-              const IconComponent = item.icon;
+            {settingsItems
+              .filter(item => item.label !== 'Google Calendar Sync')
+              .map((item, index) => {
+                const IconComponent = item.icon;
 
-              return (
-                <motion.div
-                  key={item.label}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                >
-                  {item.type === 'toggle' ? (
-                    <div className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm">
-                      <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
-                        <IconComponent className="w-5 h-5 text-blue-500" />
-                      </div>
+                return (
+                  <motion.div
+                    key={item.label}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                  >
+                    {item.type === 'toggle' ? (
+                      <div className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm">
+                        <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
+                          <IconComponent className="w-5 h-5 text-blue-500" />
+                        </div>
 
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-900">{item.label}</p>
-                        <p className="text-sm text-gray-500">{item.description}</p>
-                      </div>
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900">{item.label}</p>
+                          <p className="text-sm text-gray-500">{item.description}</p>
+                        </div>
 
-                      <Switch
-                        checked={item.value}
-                        onCheckedChange={item.onChange}
-                      />
-                    </div>
-                  ) : item.type === 'link' ? (
-                    <button
-                      onClick={() => navigate(item.path!)}
-                      className="w-full bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow"
-                    >
-                      <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
-                        <IconComponent className="w-5 h-5 text-blue-500" />
+                        <Switch
+                          checked={item.value}
+                          onCheckedChange={item.onChange}
+                        />
                       </div>
+                    ) : item.type === 'link' ? (
+                      <button
+                        onClick={() => navigate(item.path!)}
+                        className="w-full bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
+                          <IconComponent className="w-5 h-5 text-blue-500" />
+                        </div>
 
-                      <div className="flex-1 text-left">
-                        <p className="font-medium text-gray-900">{item.label}</p>
-                        <p className="text-sm text-gray-500">{item.description}</p>
-                      </div>
+                        <div className="flex-1 text-left">
+                          <p className="font-medium text-gray-900">{item.label}</p>
+                          <p className="text-sm text-gray-500">{item.description}</p>
+                        </div>
 
-                      <ChevronRight className="w-5 h-5 text-gray-400" />
-                    </button>
-                  ) : (
-                    <div className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm">
-                      <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center">
-                        <IconComponent className="w-5 h-5 text-green-500" />
-                      </div>
+                        <ChevronRight className="w-5 h-5 text-gray-400" />
+                      </button>
+                    ) : (
+                      <div className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm">
+                        <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center">
+                          <IconComponent className="w-5 h-5 text-green-500" />
+                        </div>
 
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-900">{item.label}</p>
-                        <p className="text-sm text-gray-500">{item.description}</p>
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900">{item.label}</p>
+                          <p className="text-sm text-gray-500">{item.description}</p>
+                        </div>
                       </div>
+                    )}
+                  </motion.div>
+                );
+              })}
+          </div>
+
+          {/* Google Calendar Sync card — only when signed in */}
+          {supabaseConfigured && user && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100"
+            >
+              {/* Header row */}
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+                  <Calendar className="w-5 h-5 text-blue-500" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium text-gray-900">Google Calendar Sync</p>
+                  <p className="text-xs text-gray-500">
+                    {calendarStatusLoading
+                      ? 'Checking connection…'
+                      : calendarStatus?.connected
+                        ? 'Connected'
+                        : 'Not connected'}
+                  </p>
+                </div>
+                {calendarStatus?.connected && (
+                  <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />
+                )}
+              </div>
+
+              {calendarStatus?.connected ? (
+                /* ── Connected state ── */
+                <div className="space-y-3">
+                  {/* Last synced */}
+                  <div className="flex justify-between items-center text-sm px-1">
+                    <span className="text-gray-500">Last synced</span>
+                    <span className="font-medium text-gray-900">
+                      {calendarStatus.lastSyncAt
+                        ? format(new Date(calendarStatus.lastSyncAt), 'MMM d, h:mm a')
+                        : 'Never'}
+                    </span>
+                  </div>
+
+                  {/* Sync error */}
+                  {calendarStatus.syncError && (
+                    <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 p-2 rounded-lg border border-red-100">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <span>Sync error: {calendarStatus.syncError}</span>
                     </div>
                   )}
-                </motion.div>
-              );
-            })}
-          </div>
+
+                  {/* Auto-sync toggle (future-ready) */}
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-sm text-gray-600">Auto-sync</span>
+                    <Switch
+                      checked={settings.googleCalendarAutoSync ?? false}
+                      onCheckedChange={(v) => updateSettings({ googleCalendarAutoSync: v })}
+                    />
+                  </div>
+
+                  {/* Sync Now button */}
+                  <button
+                    onClick={async () => {
+                      await syncCalendar();
+                    }}
+                    disabled={isSyncingCalendar}
+                    className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl p-3 flex items-center justify-center gap-2 transition-colors border border-blue-100 disabled:opacity-50 shadow-sm"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isSyncingCalendar ? 'animate-spin' : ''}`} />
+                    <span className="font-medium text-sm">
+                      {isSyncingCalendar ? 'Syncing…' : 'Sync Now'}
+                    </span>
+                  </button>
+
+                  {/* Disconnect */}
+                  <div className="text-center pt-1">
+                    <button
+                      onClick={async () => {
+                        try {
+                          await doDisconnect();
+                        } catch (e: any) {
+                          toast.error(e.message ?? 'Failed to disconnect');
+                        }
+                      }}
+                      className="text-xs text-gray-400 hover:text-red-500 transition-colors inline-flex items-center gap-1"
+                    >
+                      <Unplug className="w-3 h-3" />
+                      Disconnect Google Calendar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* ── Not connected state ── */
+                <button
+                  onClick={async () => {
+                    setCalendarConnecting(true);
+                    try {
+                      await connectGoogleCalendar();
+                      // Browser redirects — this won't run
+                    } catch (e: any) {
+                      toast.error(e.message ?? 'Failed to start connection');
+                      setCalendarConnecting(false);
+                    }
+                  }}
+                  disabled={calendarConnecting}
+                  className="w-full bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-xl p-3 flex items-center justify-center gap-2 transition-colors border border-gray-200 disabled:opacity-50 shadow-sm"
+                >
+                  <Calendar className="w-4 h-4" />
+                  <span className="font-medium text-sm">
+                    {calendarConnecting ? 'Opening Google…' : 'Connect Google Calendar'}
+                  </span>
+                </button>
+              )}
+            </motion.div>
+          )}
 
           {/* Account & Cloud Sync */}
           <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
