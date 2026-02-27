@@ -159,14 +159,18 @@ GRANT SELECT ON google_calendar_status TO authenticated;
 
 -------------------------------------------------------------------------------
 -- 7. google_calendar_events
---    Tracks Google Calendar event IDs per (user, day) for de-dupe upsert.
+--    Tracks Google Calendar event IDs per expense_id to guarantee idempotence.
 -------------------------------------------------------------------------------
 CREATE TABLE google_calendar_events (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
     user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    expense_id text NOT NULL,
     day date NOT NULL,
     google_event_id text NOT NULL,
-    PRIMARY KEY (user_id, day)
+    UNIQUE(user_id, google_event_id)
 );
+
+CREATE INDEX google_calendar_events_expense_idx ON google_calendar_events(user_id, expense_id);
 
 ALTER TABLE google_calendar_events ENABLE ROW LEVEL SECURITY;
 

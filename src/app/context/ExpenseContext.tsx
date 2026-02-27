@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { ensureUUIDs } from '../utils/uuidMigration';
 import { SyncService } from '../../lib/syncService';
 import { useAuth } from './AuthContext';
+import { LocalTransaction } from '../../lib/calendarService';
 
 interface ExpenseContextType {
   transactions: Transaction[];
@@ -24,6 +25,7 @@ interface ExpenseContextType {
   addVendorRule: (rule: Omit<VendorRule, 'id' | 'source' | 'createdAt'>) => void;
   deleteVendorRule: (id: string) => void;
   updateSettings: (settings: Partial<Settings>) => void;
+  bulkDeleteTransactions: (ids: string[], recurringOption?: 'single' | 'future' | 'all') => Promise<void>;
   getCategoryById: (id: string) => Category | undefined;
   getTransactionsByDate: (date: string) => Transaction[];
   setSelectedCategories: (categoryIds: string[]) => void;
@@ -44,6 +46,7 @@ interface ExpenseContextType {
   isSyncing: boolean;
   selectedDate: string;
   setSelectedDate: (date: string) => void;
+  buildCalendarPayload: () => LocalTransaction[];
 }
 
 const ExpenseContext = createContext<ExpenseContextType | undefined>(undefined);
@@ -148,7 +151,6 @@ export const getCategoryError = (name: string, categories: Category[], id?: stri
 
 export const suggestCategoryForVendor = (
   vendorName: string,
-  categories: Category[],
   userRules: VendorRule[],
   defaultRules: typeof DEFAULT_VENDOR_RULES = DEFAULT_VENDOR_RULES
 ): { categoryId: string | null; matchedRule?: any } => {
@@ -313,7 +315,7 @@ const DEFAULT_SETTINGS: Settings = {
 };
 
 export function ExpenseProvider({ children }: { children: React.ReactNode }) {
-  const { user, supabaseConfigured } = useAuth();
+  const { user, supabaseConfigured, syncCalendar } = useAuth();
   const [isSyncing, setIsSyncing] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
@@ -497,7 +499,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
 
   // Helpers for expansion
   const getSuggestedCategory = (vendor: string) => {
-    const { categoryId } = suggestCategoryForVendor(vendor, categories, vendorRules);
+    const { categoryId } = suggestCategoryForVendor(vendor, vendorRules);
     return categoryId;
   };
 
@@ -582,6 +584,37 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     return filtered;
   }, [processedTransactions, selectedCategoryIds, includeRecurring]);
 
+  // Calendar Sync Payload builder
+  const buildCalendarPayload = React.useCallback((): LocalTransaction[] => {
+    const today = new Date();
+    const pastCutoff = format(addDays(today, -14), 'yyyy-MM-dd');
+    const futureCutoff = format(addDays(today, 14), 'yyyy-MM-dd');
+
+    return transactions
+      .filter(t => !t.deletedAt && !t.isSkipped && t.date >= pastCutoff && t.date <= futureCutoff)
+      .map(t => ({
+        id: t.id,
+        date: t.date,
+        amount: t.amount,
+        vendor: t.vendor,
+        category: categories.find(c => c.id === t.category)?.name ?? t.category,
+        isRecurring: !!t.isRecurring,
+      }));
+  }, [transactions, categories]);
+
+  // Auto-sync Google Calendar on transaction changes (debounced)
+  useEffect(() => {
+    if (!isHydrated || !settings.googleCalendarAutoSync) return;
+
+    const timeoutId = setTimeout(() => {
+      // Only fire auto-sync if we have changes or at least every meaningful update
+      // The edge function is idempotent so calling it is safe
+      syncCalendar(buildCalendarPayload());
+    }, 3000); // 3 second debounce to avoid spam while editing
+
+    return () => clearTimeout(timeoutId);
+  }, [transactions, recurringExceptions, settings.googleCalendarAutoSync, isHydrated]);
+
   // Sync state to IndexedDB whenever it changes
   // We use key-based storage for arrays to avoid massive single-key reads if needed later, 
   // but for now, we just overwrite the whole collection to match the sync nature of the app.
@@ -664,6 +697,46 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       await skipOccurrence(parentRule.id, datePart, 'Deleted');
       toast.success('Occurrence removed');
       return;
+    }
+  };
+
+  const bulkDeleteTransactions = async (ids: string[], recurringOption: 'single' | 'future' | 'all' = 'single') => {
+    const now = Date.now();
+    const currentTransactions = [...transactions];
+
+    for (const id of ids) {
+      // 1. Try exact match (one-time or base rule)
+      const exactMatch = currentTransactions.find(t => t.id === id);
+      if (exactMatch) {
+        if (!exactMatch.isRecurring || recurringOption === 'all') {
+          setTransactions((prev) => prev.map((t) => (t.id === id ? { ...t, deletedAt: now, updatedAt: now } : t)));
+          await storage.set('transactions', id, { ...exactMatch, deletedAt: now, updatedAt: now });
+        } else if (recurringOption === 'future') {
+          const yesterday = format(addDays(new Date(), -1), 'yyyy-MM-dd');
+          await updateTransaction(id, { endedAt: yesterday, isActive: false });
+        }
+        continue;
+      }
+
+      // 2. Try virtual ID (recurring instance)
+      const parentRule = currentTransactions.find(t => id.startsWith(`${t.id}-`));
+      if (parentRule) {
+        const ruleId = parentRule.id;
+        const datePart = id.substring(ruleId.length + 1);
+
+        if (recurringOption === 'single') {
+          await skipOccurrence(ruleId, datePart, 'Bulk Deleted');
+        } else if (recurringOption === 'future') {
+          const dayBefore = format(addDays(parseISO(datePart), -1), 'yyyy-MM-dd');
+          await updateTransaction(ruleId, { endedAt: dayBefore, isActive: false });
+        } else if (recurringOption === 'all') {
+          const rule = currentTransactions.find(t => t.id === ruleId);
+          if (rule) {
+            setTransactions((prev) => prev.map((t) => (t.id === ruleId ? { ...t, deletedAt: now, updatedAt: now } : t)));
+            await storage.set('transactions', ruleId, { ...rule, deletedAt: now, updatedAt: now });
+          }
+        }
+      }
     }
   };
 
@@ -1025,6 +1098,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
         updateTransaction,
         updateRecurringRule,
         deleteTransaction,
+        bulkDeleteTransactions,
         addCategory,
         updateCategory,
         deleteCategory,
@@ -1051,6 +1125,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
         isSyncing,
         selectedDate,
         setSelectedDate,
+        buildCalendarPayload
       }}
     >
       {children}
