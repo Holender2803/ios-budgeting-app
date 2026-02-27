@@ -28,16 +28,14 @@ export interface SyncResult {
 
 /** Returns the current session's access_token, or null if not signed in. */
 async function getAccessToken(): Promise<string | null> {
-    if (!supabase) return null;
     const { data } = await supabase.auth.getSession();
     return data.session?.access_token ?? null;
 }
 
-/** Returns the current session's access_token, throws if not signed in. */
-async function requireAccessToken(): Promise<string> {
+/** Throws if not signed in. */
+async function requireSession(): Promise<void> {
     const token = await getAccessToken();
     if (!token) throw new Error("You must be signed in to use Google Calendar sync.");
-    return token;
 }
 
 const DISCONNECTED: CalendarStatus = {
@@ -53,11 +51,10 @@ const DISCONNECTED: CalendarStatus = {
 // Status — reads the google_calendar_status DB view (safe, no refresh_token)
 // ────────────────────────────────────────────────────────────────────────────
 export async function getCalendarStatus(): Promise<CalendarStatus> {
-    if (!supabase) return DISCONNECTED;
     const token = await getAccessToken();
     if (!token) return DISCONNECTED;
 
-    // Query the view directly — it strips the refresh_token
+    // If RLS blocks this, you'll also see auth errors here.
     const { data, error } = await supabase
         .from("google_calendar_status")
         .select("calendar_id, connected_at, last_sync_at, sync_error, status")
@@ -79,23 +76,15 @@ export async function getCalendarStatus(): Promise<CalendarStatus> {
 // Connect — ask the edge function to build the Google consent URL, then redirect
 // ────────────────────────────────────────────────────────────────────────────
 export async function initiateGoogleCalendarConnect(): Promise<void> {
-    if (!supabase) throw new Error("Supabase not configured");
-    const accessToken = await requireAccessToken();
+    await requireSession();
 
-    // ── Diagnostic ── open browser DevTools > Console to see this
-    console.log(
-        "[CalendarConnect] Token length:", accessToken.length,
-        "| starts:", accessToken.slice(0, 10),
-        "| ends:", accessToken.slice(-6)
-    );
-
+    // IMPORTANT: Let supabase-js attach the Authorization header automatically.
+    // Passing custom headers here can accidentally drop required gateway headers.
     const { data, error } = await supabase.functions.invoke("google-calendar-connect", {
         body: { initiate: true },
-        headers: { Authorization: `Bearer ${accessToken}` },
     });
 
     if (error) {
-        // Provide a more helpful message than the generic supabase-js one
         const msg = (error as any)?.message ?? String(error);
         throw new Error(`Could not start Google Calendar connection: ${msg}`);
     }
@@ -103,88 +92,132 @@ export async function initiateGoogleCalendarConnect(): Promise<void> {
     const url = (data as any)?.url;
     if (!url) throw new Error("Edge function did not return a redirect URL.");
 
-    // Redirect the browser to Google's consent page
     window.location.href = url;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
 // Sync — compute daily totals from local data and push to Google Calendar
-// Pass in the local transactions so we don't depend on Supabase sync state.
 // ────────────────────────────────────────────────────────────────────────────
-
 export interface LocalTransaction {
     id: string;
     date: string;        // YYYY-MM-DD
     amount: number;
     category: string;    // category id / label
+    vendor: string;
     deletedAt?: number;  // undefined = not deleted
+    isRecurring?: boolean; // for daily summary: Total Recurring / Non-Recurring
 }
 
 export async function syncGoogleCalendar(
     localTransactions: LocalTransaction[] = []
 ): Promise<SyncResult> {
-    if (!supabase) throw new Error("Supabase not configured");
-    const accessToken = await requireAccessToken();
+    // Verify environment variables first
+    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+        throw new Error("Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY environment variables");
+    }
 
-    // Only send non-deleted transactions from the last 90 days
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 90);
-    const cutoffStr = cutoff.toISOString().split("T")[0];
+    // Explicitly get session
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) {
+        console.error("[CalendarService] Session error:", sessionError);
+        throw new Error(`Session error: ${sessionError.message}`);
+    }
+    
+    if (!sessionData.session?.access_token) {
+        console.error("[CalendarService] No session or access_token found");
+        throw new Error("You must be signed in to sync Google Calendar.");
+    }
 
-    const recentTransactions = localTransactions.filter(
-        t => !t.deletedAt && t.date >= cutoffStr
-    ).map(t => ({
-        date: t.date,
-        amount: t.amount,
-        category: t.category,
-    }));
+    const accessToken = sessionData.session.access_token;
+    console.log("[CalendarService] Token diagnostics:", {
+        hasToken: !!accessToken,
+        length: accessToken.length,
+        start: accessToken.substring(0, 3) + "...",
+        end: "..." + accessToken.substring(accessToken.length - 3)
+    });
+
+    const recentTransactions = localTransactions
+        .filter(t => !t.deletedAt)
+        .map(t => ({
+            id: t.id,
+            date: t.date,
+            amount: t.amount,
+            category: t.category,
+            vendor: t.vendor,
+            isRecurring: t.isRecurring,
+        }));
 
     console.log(
         "[CalendarService] syncGoogleCalendar — total local:", localTransactions.length,
-        "| 90-day cutoff:", cutoffStr,
         "| sending:", recentTransactions.length, "transactions"
     );
 
-    const { data, error } = await supabase.functions.invoke("google-calendar-sync", {
-        body: { transactions: recentTransactions },
-        headers: { Authorization: `Bearer ${accessToken}` },
+    // Manual fetch with explicit auth headers.
+    // IMPORTANT: We send the anon/publishable key in Authorization so the Supabase
+    // gateway is always happy, and pass the *user* JWT in a custom header that
+    // the edge function reads and validates with supabaseAdmin.
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-sync`;
+    const res = await fetch(url, {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY,
+            "x-supabase-user-token": accessToken,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ transactions: recentTransactions }),
     });
 
-    if (error) {
-        const msg = (error as any)?.message ?? "Calendar sync failed";
-        console.error("[CalendarService] Sync error:", msg);
-        throw new Error(msg);
+    if (!res.ok) {
+        const errorText = await res.text();
+        console.error("[CalendarService] HTTP error:", {
+            status: res.status,
+            statusText: res.statusText,
+            body: errorText
+        });
+        throw new Error(`Edge Function returned a non-2xx status code (${res.status}): ${errorText}`);
     }
 
-    // Surface any Google Calendar API error the edge function captured
-    const responseError = (data as any)?.error;
+    const data = await res.json();
+    const responseError = data?.error;
     if (responseError) {
         console.error("[CalendarService] Calendar API error from edge function:", responseError);
         throw new Error(responseError);
     }
 
-    const result = {
-        synced: (data as any)?.synced ?? 0,
-        deleted: (data as any)?.deleted ?? 0,
+    const result: SyncResult = {
+        synced: data?.synced ?? 0,
+        deleted: data?.deleted ?? 0,
     };
+
     console.log("[CalendarService] Sync response:", result);
     return result;
 }
-
 
 // ────────────────────────────────────────────────────────────────────────────
 // Disconnect — remove the stored connection server-side
 // ────────────────────────────────────────────────────────────────────────────
 export async function disconnectGoogleCalendar(): Promise<void> {
-    if (!supabase) throw new Error("Supabase not configured");
-    const accessToken = await requireAccessToken();
+    await requireSession();
 
-    const { error } = await supabase.functions.invoke("google-calendar-connect", {
+    // supabase.functions.invoke doesn't reliably support method overrides across versions.
+    // Use fetch with the proper Supabase auth + apikey.
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) throw new Error("You must be signed in to disconnect Google Calendar.");
+
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-connect`;
+
+    const res = await fetch(url, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
     });
 
-    if (error) {
-        throw new Error((error as any)?.message ?? "Failed to disconnect Google Calendar");
+    if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`Failed to disconnect Google Calendar (${res.status}): ${txt}`);
     }
 }

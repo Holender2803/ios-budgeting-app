@@ -164,7 +164,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const handleSyncCalendar = async (transactions: LocalTransaction[]) => {
         if (isSyncingCalendar) return;
         setIsSyncingCalendar(true);
+
         console.log('[CalendarSync] Starting sync with', transactions.length, 'local transactions');
+
+        // ---- Auth diagnostics before calling edge function ----
+        try {
+            if (!supabaseConfigured || !supabase) {
+                console.error('[CalendarSync] Supabase not configured on frontend');
+            } else {
+                const { data, error } = await supabase.auth.getSession();
+                if (error) {
+                    console.error('[CalendarSync] getSession error:', error);
+                } else {
+                    const accessToken = data.session?.access_token;
+                    console.log('[CalendarSync] Session diagnostics:', {
+                        hasSession: !!data.session,
+                        hasAccessToken: !!accessToken,
+                        tokenLength: accessToken ? accessToken.length : 0,
+                        tokenStart: accessToken ? accessToken.slice(0, 5) + '...' : null,
+                        tokenEnd: accessToken ? '...' + accessToken.slice(-5) : null,
+                    });
+                }
+            }
+        } catch (diagError) {
+            console.error('[CalendarSync] Unexpected error while inspecting session:', diagError);
+        }
+
         try {
             const result = await syncGoogleCalendar(transactions);
             toast.success(`Synced ${result.synced} day${result.synced !== 1 ? 's' : ''} to Google Calendar`);
