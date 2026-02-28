@@ -144,7 +144,7 @@ export function TransactionEdit() {
         <div className="max-w-lg mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <button
-              onClick={() => navigate(`/day/${transaction.date}`)}
+              onClick={() => navigate(-1)}
               className="p-2 hover:bg-gray-100 rounded-full transition-colors"
             >
               <ChevronLeft className="w-6 h-6 text-gray-600" />

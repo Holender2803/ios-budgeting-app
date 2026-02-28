@@ -1,7 +1,8 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useLocation } from 'react-router';
 import { ChevronLeft, Camera } from 'lucide-react';
 import { useExpense } from '../context/ExpenseContext';
+import { useVendorSuggestions } from '../hooks/useVendorSuggestions';
 import { CategoryPicker } from '../components/category/CategoryPicker';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -12,11 +13,12 @@ import { toast } from 'sonner';
 
 export function AddExpense() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { transactions, addTransaction, categories, addVendorRule, getSuggestedCategory, selectedDate } = useExpense();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const [amount, setAmount] = useState('');
-  const [vendor, setVendor] = useState('');
+  const [vendor, setVendor] = useState(location.state?.vendor || '');
   const [categoryId, setCategoryId] = useState(categories[0]?.id || '');
   const [date, setDate] = useState(selectedDate);
   const [note, setNote] = useState('');
@@ -27,28 +29,7 @@ export function AddExpense() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [userTouchedCategory, setUserTouchedCategory] = useState(false);
 
-  // Get distinct vendors sorted by most recent first
-  const recentVendors = useMemo(() => {
-    const vendors = new Map<string, Date>();
-
-    // Sort transactions by date descending to get most recent first
-    [...transactions]
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .forEach(t => {
-        if (!vendors.has(t.vendor)) {
-          vendors.set(t.vendor, new Date(t.date));
-        }
-      });
-
-    return Array.from(vendors.keys());
-  }, [transactions]);
-
-  const filteredSuggestions = useMemo(() => {
-    if (!vendor.trim()) return [];
-    return recentVendors
-      .filter(v => v.toLowerCase().includes(vendor.toLowerCase()) && v.toLowerCase() !== vendor.toLowerCase())
-      .slice(0, 5);
-  }, [vendor, recentVendors]);
+  const { suggestions: filteredSuggestions } = useVendorSuggestions(vendor);
 
   // Auto-apply suggested category
   useEffect(() => {
