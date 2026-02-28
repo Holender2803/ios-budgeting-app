@@ -39,7 +39,7 @@ export function BottomNav() {
         </div>
 
         <button
-          onClick={() => toast.info('Budgets will be developed in the future')}
+          onClick={() => navigate('/budgets')}
           className={`flex flex-col items-center gap-1 w-[4.5rem] py-1 rounded-lg transition-colors ${isActive('/budgets') ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600'
             }`}
         >
