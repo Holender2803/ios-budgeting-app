@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import * as LucideIcons from 'lucide-react';
 import { Search, X, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -6,12 +7,16 @@ import { useExpense, CANONICAL_GROUPS, getCategoryError } from '../../context/Ex
 import { Category } from '../../types';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { cn } from '../ui/utils';
 
 interface FullCategoryPickerProps {
     isOpen: boolean;
     onClose: () => void;
-    selectedCategoryId: string;
-    onSelect: (categoryId: string) => void;
+    selectedCategoryId: string | null;
+    onSelect: (categoryId: string | null) => void;
+    categoriesOverride?: Category[];
+    showAllOption?: boolean;
+    hideAddNew?: boolean;
 }
 
 export function FullCategoryPicker({
@@ -19,8 +24,12 @@ export function FullCategoryPicker({
     onClose,
     selectedCategoryId,
     onSelect,
+    categoriesOverride,
+    showAllOption,
+    hideAddNew
 }: FullCategoryPickerProps) {
-    const { categories, addCategory } = useExpense();
+    const { categories: allCategories, addCategory } = useExpense();
+    const categories = categoriesOverride || allCategories;
     const [searchQuery, setSearchQuery] = useState('');
     const [isAddingNew, setIsAddingNew] = useState(false);
     const [newName, setNewName] = useState('');
@@ -42,7 +51,7 @@ export function FullCategoryPicker({
         return groups;
     }, [filteredCategories]);
 
-    const handleSelect = (categoryId: string) => {
+    const handleSelect = (categoryId: string | null) => {
         onSelect(categoryId);
         setTimeout(onClose, 200);
     };
@@ -80,17 +89,21 @@ export function FullCategoryPicker({
         );
     };
 
-    return (
+    return createPortal(
         <AnimatePresence>
             {isOpen && (
-                <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+                <div
+                    className="fixed inset-0 flex items-end justify-center sm:items-center"
+                    style={{ zIndex: 300 }}
+                >
                     {/* Backdrop */}
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={onClose}
-                        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+                        className="absolute inset-0 bg-black/50"
+                        style={{ pointerEvents: 'all', zIndex: 300 }}
                     />
 
                     {/* Sheet */}
@@ -99,7 +112,9 @@ export function FullCategoryPicker({
                         animate={{ y: 0 }}
                         exit={{ y: '100%' }}
                         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                        onClick={(e) => e.stopPropagation()}
                         className="relative w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl max-h-[90vh] flex flex-col"
+                        style={{ pointerEvents: 'all', zIndex: 400 }}
                     >
                         {/* Header */}
                         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
@@ -137,6 +152,29 @@ export function FullCategoryPicker({
                         {/* Categories Grid */}
                         <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                             <div className="space-y-6">
+                                {showAllOption && (
+                                    <div className="px-2">
+                                        <button
+                                            onClick={() => handleSelect(null)}
+                                            className={cn(
+                                                "w-full flex items-center gap-3 p-3 rounded-2xl transition-all",
+                                                selectedCategoryId === null ? "bg-blue-50 ring-1 ring-blue-500/20" : "hover:bg-gray-50 bg-gray-50/50"
+                                            )}
+                                        >
+                                            <div className={cn(
+                                                "w-10 h-10 rounded-xl flex items-center justify-center",
+                                                selectedCategoryId === null ? "bg-blue-500 shadow-lg shadow-blue-200" : "bg-white"
+                                            )}>
+                                                <LucideIcons.LayoutGrid className={cn("w-5 h-5", selectedCategoryId === null ? "text-white" : "text-gray-400")} />
+                                            </div>
+                                            <span className={cn("text-sm font-bold", selectedCategoryId === null ? "text-blue-600" : "text-gray-600")}>
+                                                All Categories
+                                            </span>
+                                            {selectedCategoryId === null && <LucideIcons.Check className="w-4 h-4 text-blue-500 ml-auto mr-2" />}
+                                        </button>
+                                    </div>
+                                )}
+
                                 {Object.entries(groupedCategories).map(([group, groupCategories]) => (
                                     <div key={group} className="space-y-3">
                                         <h3 className="px-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
@@ -152,26 +190,29 @@ export function FullCategoryPicker({
                                                         key={category.id}
                                                         whileTap={{ scale: 0.95 }}
                                                         onClick={() => handleSelect(category.id)}
-                                                        className={`flex flex-col items-center gap-2 p-2 rounded-2xl transition-all ${isSelected
-                                                            ? 'bg-blue-50/80 ring-1 ring-blue-500/20'
-                                                            : 'hover:bg-gray-50'
-                                                            }`}
+                                                        className={cn(
+                                                            "flex flex-col items-center gap-2 p-2 rounded-2xl transition-all",
+                                                            isSelected ? "bg-blue-50/80 ring-1 ring-blue-500/20" : "hover:bg-gray-50"
+                                                        )}
                                                     >
                                                         <div
-                                                            className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${isSelected ? 'bg-blue-500 shadow-lg shadow-blue-200' : 'bg-gray-50 shadow-sm'
-                                                                }`}
+                                                            className={cn(
+                                                                "w-12 h-12 rounded-2xl flex items-center justify-center transition-all",
+                                                                isSelected ? "bg-blue-500 shadow-lg shadow-blue-200" : "bg-gray-50 shadow-sm"
+                                                            )}
                                                         >
                                                             {IconComponent && (
                                                                 <IconComponent
-                                                                    className={`w-6 h-6 transition-colors ${isSelected ? 'text-white' : ''
-                                                                        }`}
+                                                                    className={cn("w-6 h-6 transition-colors", isSelected ? "text-white" : "")}
                                                                     style={{ color: isSelected ? undefined : category.color }}
                                                                 />
                                                             )}
                                                         </div>
                                                         <span
-                                                            className={`text-[10px] font-bold text-center leading-tight line-clamp-2 ${isSelected ? 'text-blue-600' : 'text-gray-600'
-                                                                }`}
+                                                            className={cn(
+                                                                "text-[10px] font-bold text-center leading-tight line-clamp-2",
+                                                                isSelected ? "text-blue-600" : "text-gray-600"
+                                                            )}
                                                         >
                                                             {searchQuery ? (
                                                                 <HighlightText text={category.name} highlight={searchQuery} />
@@ -194,82 +235,85 @@ export function FullCategoryPicker({
                                 )}
 
                                 {/* Add New Category CTA */}
-                                <div className="pt-4 mt-4 border-t border-gray-100 pb-8">
-                                    {isAddingNew ? (
-                                        <motion.div
-                                            initial={{ opacity: 0, y: 10 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            className="p-4 bg-gray-50 rounded-2xl space-y-4"
-                                        >
-                                            <div className="space-y-2">
-                                                <Label htmlFor="new-cat" className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Category Name</Label>
-                                                <Input
-                                                    id="new-cat"
-                                                    value={newName}
-                                                    onChange={(e) => setNewName(e.target.value)}
-                                                    placeholder="e.g. Shopping"
-                                                    className="h-12 bg-white rounded-xl border-gray-200"
-                                                    autoFocus
-                                                />
-                                                {getCategoryError(newName, categories) && newName.trim() !== '' && (
-                                                    <p className="text-[10px] font-bold text-red-500 uppercase tracking-tight ml-1">
-                                                        {getCategoryError(newName, categories)}
-                                                    </p>
-                                                )}
-                                            </div>
-
-                                            <div className="space-y-2">
-                                                <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Pick Group</Label>
-                                                <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
-                                                    {CANONICAL_GROUPS.map(g => (
-                                                        <button
-                                                            key={g}
-                                                            onClick={() => setNewGroup(g)}
-                                                            className={`px-3 py-1.5 rounded-full text-[10px] font-bold whitespace-nowrap transition-all ${newGroup === g
-                                                                ? 'bg-blue-500 text-white shadow-sm'
-                                                                : 'bg-white text-gray-500 border border-gray-100'
-                                                                }`}
-                                                        >
-                                                            {g}
-                                                        </button>
-                                                    ))}
+                                {!hideAddNew && (
+                                    <div className="pt-4 mt-4 border-t border-gray-100 pb-8">
+                                        {isAddingNew ? (
+                                            <motion.div
+                                                initial={{ opacity: 0, y: 10 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                className="p-4 bg-gray-50 rounded-2xl space-y-4"
+                                            >
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="new-cat" className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Category Name</Label>
+                                                    <Input
+                                                        id="new-cat"
+                                                        value={newName}
+                                                        onChange={(e) => setNewName(e.target.value)}
+                                                        placeholder="e.g. Shopping"
+                                                        className="h-12 bg-white rounded-xl border-gray-200"
+                                                        autoFocus
+                                                    />
+                                                    {getCategoryError(newName, allCategories) && newName.trim() !== '' && (
+                                                        <p className="text-[10px] font-bold text-red-500 uppercase tracking-tight ml-1">
+                                                            {getCategoryError(newName, allCategories)}
+                                                        </p>
+                                                    )}
                                                 </div>
-                                            </div>
 
-                                            <div className="flex gap-2 pt-2">
-                                                <button
-                                                    onClick={() => setIsAddingNew(false)}
-                                                    className="flex-1 h-12 text-xs font-bold text-gray-400 uppercase"
-                                                >
-                                                    Cancel
-                                                </button>
-                                                <button
-                                                    onClick={handleAddNew}
-                                                    disabled={!!getCategoryError(newName, categories)}
-                                                    className="flex-1 h-12 bg-blue-500 text-white rounded-xl text-xs font-bold uppercase disabled:bg-gray-100 disabled:text-gray-400 shadow-lg shadow-blue-100"
-                                                >
-                                                    Add Category
-                                                </button>
-                                            </div>
-                                        </motion.div>
-                                    ) : (
-                                        <button
-                                            onClick={() => setIsAddingNew(true)}
-                                            className="w-full py-4 flex flex-col items-center gap-1 group"
-                                        >
-                                            <p className="text-xs font-medium text-gray-400 group-hover:text-gray-600 transition-colors">Didn't find what you need?</p>
-                                            <div className="flex items-center gap-2 text-sm font-bold text-blue-500 group-hover:text-blue-600 transition-colors">
-                                                <Plus className="w-4 h-4" />
-                                                Add new category
-                                            </div>
-                                        </button>
-                                    )}
-                                </div>
+                                                <div className="space-y-2">
+                                                    <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Pick Group</Label>
+                                                    <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+                                                        {CANONICAL_GROUPS.map(g => (
+                                                            <button
+                                                                key={g}
+                                                                onClick={() => setNewGroup(g)}
+                                                                className={`px-3 py-1.5 rounded-full text-[10px] font-bold whitespace-nowrap transition-all ${newGroup === g
+                                                                    ? 'bg-blue-500 text-white shadow-sm'
+                                                                    : 'bg-white text-gray-500 border border-gray-100'
+                                                                    }`}
+                                                            >
+                                                                {g}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex gap-2 pt-2">
+                                                    <button
+                                                        onClick={() => setIsAddingNew(false)}
+                                                        className="flex-1 h-12 text-xs font-bold text-gray-400 uppercase"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                    <button
+                                                        onClick={handleAddNew}
+                                                        disabled={!!getCategoryError(newName, allCategories)}
+                                                        className="flex-1 h-12 bg-blue-500 text-white rounded-xl text-xs font-bold uppercase disabled:bg-gray-100 disabled:text-gray-400 shadow-lg shadow-blue-100"
+                                                    >
+                                                        Add Category
+                                                    </button>
+                                                </div>
+                                            </motion.div>
+                                        ) : (
+                                            <button
+                                                onClick={() => setIsAddingNew(true)}
+                                                className="w-full py-4 flex flex-col items-center gap-1 group"
+                                            >
+                                                <p className="text-xs font-medium text-gray-400 group-hover:text-gray-600 transition-colors">Didn't find what you need?</p>
+                                                <div className="flex items-center gap-2 text-sm font-bold text-blue-500 group-hover:text-blue-600 transition-colors">
+                                                    <Plus className="w-4 h-4" />
+                                                    Add new category
+                                                </div>
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </motion.div>
                 </div>
             )}
-        </AnimatePresence>
+        </AnimatePresence>,
+        document.body
     );
 }

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, addDays, subDays, startOfWeek, endOfWeek, addWeeks, subWeeks, isToday, startOfDay, endOfDay } from 'date-fns';
 import { MonthlyCalendar } from '../components/MonthlyCalendar';
 import { WeeklyCalendar } from '../components/WeeklyCalendar';
@@ -10,8 +10,9 @@ import { useExpense } from '../context/ExpenseContext';
 import { useSelection } from '../context/SelectionContext';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { TransactionItem } from '../components/TransactionItem';
+import { SearchOverlay } from '../components/ui/SearchOverlay';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, ChevronRight, Download, CheckSquare, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, CheckSquare, X, Search } from 'lucide-react';
 import { downloadICS } from '../utils/icsExport';
 import { toast } from 'sonner';
 
@@ -26,6 +27,8 @@ export function Home() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [recurringOption, setRecurringOption] = useState<'single' | 'future' | 'all'>('single');
   const [showConfirm, setShowConfirm] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const isSearchOpen = searchParams.get('search') === 'true';
 
   // Sync selectedDate with currentDate whenever currentDate changes
   useEffect(() => {
@@ -268,6 +271,16 @@ export function Home() {
                 >
                   <Download className="w-5 h-5" />
                 </button>
+
+                <button
+                  onClick={() => setSearchParams({ search: 'true' })}
+                  disabled={isSelectionMode}
+                  className={`p-2 hover:bg-gray-100 hover:text-gray-900 rounded-full transition-colors text-gray-400 ${isSelectionMode ? 'opacity-20 cursor-not-allowed' : ''}`}
+                  aria-label="Search items"
+                  title="Search items"
+                >
+                  <Search className="w-5 h-5" />
+                </button>
               </div>
             </div>
           </div>
@@ -340,6 +353,9 @@ export function Home() {
         <CategoryFilterBar transactions={rangeTransactionsUnfiltered} />
         <BottomNav />
       </div>
+
+      {/* Search Overlay */}
+      <SearchOverlay isOpen={isSearchOpen} onClose={() => setSearchParams({})} />
 
       {/* Bulk Action Bar */}
       <BulkActionBar onDelete={() => setShowConfirm(true)} />
