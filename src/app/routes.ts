@@ -47,6 +47,13 @@ export const router = createBrowserRouter([
     Component: Reports,
   },
   {
+    path: '/budgets',
+    async lazy() {
+      const { BudgetsTracking } = await import('./screens/BudgetsTracking');
+      return { Component: BudgetsTracking };
+    },
+  },
+  {
     path: '/settings/recurring',
     async lazy() {
       const { RecurringRules } = await import('./screens/RecurringRules');

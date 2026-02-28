@@ -21,7 +21,12 @@ function AppDataBlocker() {
   return (
     <>
       <RouterProvider router={router} />
-      <Toaster />
+      <Toaster
+        toastOptions={{
+          style: { marginBottom: '80px' },
+          className: 'z-[100]'
+        }}
+      />
     </>
   );
 }
