@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router';
-import { ChevronRight, Bell, Calendar, Shield, Tag, Repeat, Trash2, User as UserIcon, LogOut, Cloud, RefreshCw, Unplug, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ChevronRight, Bell, Calendar, Shield, Tag, Repeat, Trash2, User as UserIcon, LogOut, Cloud, RefreshCw, Unplug, CheckCircle2, AlertCircle, Wallet } from 'lucide-react';
 import { useExpense } from '../context/ExpenseContext';
 import { format } from 'date-fns';
 import { Switch } from '../components/ui/switch';
@@ -70,6 +70,13 @@ export function Settings() {
       description: 'Manage subscriptions & bills',
       type: 'link' as const,
       path: '/settings/recurring',
+    },
+    {
+      icon: Wallet,
+      label: 'Budget Settings',
+      description: 'Set monthly limits per category',
+      type: 'link' as const,
+      path: '/settings/budgets',
     },
     {
       icon: Tag,

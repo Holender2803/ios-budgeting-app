@@ -7,6 +7,7 @@ import { Categories } from './screens/Categories';
 import { Settings } from './screens/Settings';
 import { Reports } from './screens/Reports';
 import { TransactionEdit } from './screens/TransactionEdit';
+import { BudgetSettings } from './screens/BudgetSettings';
 
 export const router = createBrowserRouter([
   {
@@ -32,6 +33,10 @@ export const router = createBrowserRouter([
   {
     path: '/settings',
     Component: Settings,
+  },
+  {
+    path: '/settings/budgets',
+    Component: BudgetSettings,
   },
   {
     path: '/transaction/:id',
