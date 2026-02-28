@@ -59,6 +59,7 @@ export interface Settings {
   lastPushAt?: number; // UTC timestamp of last successful Supabase Push
   lastSyncError?: string; // Message documenting why sync failed
   includeRecurringInReports?: boolean; // Persisted toggle state for Reports screen
+  currency?: string; // Selected currency code (CAD, USD, EUR, GBP, AUD)
 }
 
 export interface GoogleCalendarStatus {

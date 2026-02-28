@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router';
-import { ChevronRight, Bell, Calendar, Shield, Tag, Repeat, Trash2, User as UserIcon, LogOut, Cloud, RefreshCw, Unplug, CheckCircle2, AlertCircle, Wallet } from 'lucide-react';
+import { ChevronRight, RefreshCw, Unplug, AlertCircle } from 'lucide-react';
 import { useExpense } from '../context/ExpenseContext';
 import { format } from 'date-fns';
 import { Switch } from '../components/ui/switch';
@@ -18,14 +18,88 @@ import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { AuthModal } from '../components/AuthModal';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { CurrencySheet, CURRENCIES } from '../components/settings/CurrencySheet';
+import { ExportSheet } from '../components/settings/ExportSheet';
+import { AccountSheet } from '../components/settings/AccountSheet';
 
+// ─── Reusable Row Component ───────────────────────────────────────────────────
+interface SettingsRowProps {
+  icon: string;
+  iconBg: string;
+  label: string;
+  labelClassName?: string;
+  sub?: string;
+  badge?: string | number;
+  right?: React.ReactNode;
+  onClick?: () => void;
+  showChevron?: boolean;
+  isLast?: boolean;
+}
+
+function SettingsRow({ icon, iconBg, label, labelClassName, sub, badge, right, onClick, showChevron = true, isLast = false }: SettingsRowProps) {
+  return (
+    <>
+      <button
+        onClick={onClick}
+        className="w-full flex items-center gap-3 px-4 py-3 min-h-[56px] hover:bg-gray-50/50 transition-colors text-left"
+      >
+        {/* Icon */}
+        <div
+          className="w-[34px] h-[34px] rounded-[9px] flex items-center justify-center shrink-0 text-base"
+          style={{ backgroundColor: iconBg }}
+        >
+          {icon}
+        </div>
+
+        {/* Label + Sub */}
+        <div className="flex-1 min-w-0">
+          <p className={`text-[15px] font-medium ${labelClassName || 'text-gray-900'}`}>{label}</p>
+          {sub && <p className="text-xs text-gray-500 truncate">{sub}</p>}
+        </div>
+
+        {/* Right side */}
+        {badge !== undefined && (
+          <span className="bg-gray-100 text-gray-600 text-xs font-medium px-2 py-0.5 rounded-full">
+            {badge}
+          </span>
+        )}
+        {right}
+        {showChevron && (
+          <ChevronRight className="w-4.5 h-4.5 text-gray-400 shrink-0" />
+        )}
+      </button>
+      {!isLast && <div className="mx-4 border-b border-[#F1F5F9]" />}
+    </>
+  );
+}
+
+// ─── Section Label ────────────────────────────────────────────────────────────
+function SectionLabel({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <p
+      className={`text-[11px] font-medium uppercase tracking-[0.6px] mb-2 pl-1 ${className || 'text-[#64748B]'}`}
+    >
+      {children}
+    </p>
+  );
+}
+
+// ─── Section Card ─────────────────────────────────────────────────────────────
+function SectionCard({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="bg-white rounded-[16px] border border-[#E2E8F0] overflow-hidden">
+      {children}
+    </div>
+  );
+}
+
+// ─── Main Settings Component ──────────────────────────────────────────────────
 export function Settings() {
   const navigate = useNavigate();
   const {
     user,
     supabaseConfigured,
-    signOut,
     calendarStatus,
     calendarStatusLoading,
     connectGoogleCalendar,
@@ -35,389 +109,371 @@ export function Settings() {
   } = useAuth();
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [calendarConnecting, setCalendarConnecting] = useState(false);
+  const [calendarExpanded, setCalendarExpanded] = useState(false);
+  const [currencySheetOpen, setCurrencySheetOpen] = useState(false);
+  const [exportSheetOpen, setExportSheetOpen] = useState(false);
+  const [accountSheetOpen, setAccountSheetOpen] = useState(false);
   const {
     settings,
     updateSettings,
-    getCategoryById,
+    transactions,
+    categories,
     exportBackup,
     importBackup,
     clearAllData,
-    syncData,
-    isSyncing,
-    buildCalendarPayload
+    buildCalendarPayload,
   } = useExpense();
 
-  const clearDefaultFilter = () => {
-    updateSettings({ defaultCategoryFilter: undefined });
-    toast.success('Default filter cleared');
+  // Count active recurring expenses
+  const recurringCount = useMemo(() => {
+    return transactions.filter(t => t.isRecurring && !t.isVirtual && t.isActive !== false && !t.deletedAt).length;
+  }, [transactions]);
+
+  // Currency display
+  const selectedCurrency = settings.currency || 'CAD';
+  const currencyInfo = CURRENCIES.find(c => c.code === selectedCurrency);
+  const currencyDisplay = currencyInfo ? `${currencyInfo.code} · ${currencyInfo.name}` : selectedCurrency;
+
+  // Notifications display
+  const notifStatus = settings.notifications ? 'Daily reminders · On' : 'All notifications off';
+
+  // Sync status display
+  const lastSyncDisplay = settings.lastPullAt
+    ? format(new Date(settings.lastPullAt), 'MMM d, h:mm a')
+    : 'Never';
+
+  // User display
+  const userEmail = user?.email || '';
+  const userName = user?.user_metadata?.full_name || userEmail.split('@')[0] || '';
+  const userInitial = (userName[0] || '?').toUpperCase();
+
+  // CSV export
+  const exportCSV = () => {
+    try {
+      const activeTransactions = transactions.filter(t => !t.deletedAt && !t.isVirtual);
+      if (activeTransactions.length === 0) {
+        toast.error('No expenses to export');
+        return;
+      }
+
+      const headers = ['Date', 'Vendor', 'Amount', 'Category', 'Note', 'Recurring'];
+      const rows = activeTransactions.map(t => {
+        const cat = categories.find(c => c.id === t.category);
+        return [
+          t.date,
+          `"${t.vendor.replace(/"/g, '""')}"`,
+          t.amount.toFixed(2),
+          `"${(cat?.name || t.category).replace(/"/g, '""')}"`,
+          `"${(t.note || '').replace(/"/g, '""')}"`,
+          t.isRecurring ? 'Yes' : 'No',
+        ].join(',');
+      });
+
+      const csv = [headers.join(','), ...rows].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `calendarspent-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast.success('CSV exported successfully');
+    } catch (error) {
+      console.error('CSV export failed:', error);
+      toast.error('Failed to export CSV');
+    }
   };
-
-  const defaultFilterCategories = settings.defaultCategoryFilter?.map(id => getCategoryById(id)?.name).filter(Boolean).join(', ');
-
-  const settingsItems = [
-    {
-      icon: Bell,
-      label: 'Notifications',
-      description: 'Daily spending reminders',
-      value: settings.notifications,
-      onChange: (value: boolean) => updateSettings({ notifications: value }),
-      type: 'toggle' as const,
-    },
-    // Google Calendar Sync is handled by a dedicated card below — removed from this list
-    {
-      icon: Repeat,
-      label: 'Recurring Payments',
-      description: 'Manage subscriptions & bills',
-      type: 'link' as const,
-      path: '/settings/recurring',
-    },
-    {
-      icon: Wallet,
-      label: 'Budget Settings',
-      description: 'Set monthly limits per category',
-      type: 'link' as const,
-      path: '/settings/budgets',
-    },
-    {
-      icon: Tag,
-      label: 'Categories & Rules',
-      description: 'Manage spending categories',
-      type: 'link' as const,
-      path: '/categories',
-    },
-    {
-      icon: Shield,
-      label: 'Privacy',
-      description: 'Your data stays on your device',
-      type: 'info' as const,
-    },
-  ];
 
   return (
     <div className="h-[100dvh] flex flex-col bg-gray-50 overflow-hidden">
-      {/* Header (Frozen) */}
+      {/* Header */}
       <div className="flex-none bg-white border-b border-gray-200">
         <div className="max-w-lg mx-auto px-4 py-6">
           <h1 className="text-2xl font-semibold text-gray-900">Settings</h1>
         </div>
       </div>
 
-      {/* Scrollable content area */}
+      {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto min-h-0">
         <div className="max-w-lg mx-auto px-4 py-6 space-y-6 pb-10">
-          {/* Settings List */}
-          <div className="space-y-2">
-            {settingsItems
-              .filter(item => item.label !== 'Google Calendar Sync')
-              .map((item, index) => {
-                const IconComponent = item.icon;
 
-                return (
-                  <motion.div
-                    key={item.label}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                  >
-                    {item.type === 'toggle' ? (
-                      <div className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm">
-                        <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
-                          <IconComponent className="w-5 h-5 text-blue-500" />
-                        </div>
+          {/* ═══ PROFILE CARD ═══ */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.0 }}
+          >
+            <button
+              onClick={() => {
+                if (user) {
+                  setAccountSheetOpen(true);
+                } else {
+                  setAuthModalOpen(true);
+                }
+              }}
+              className="w-full bg-white rounded-[16px] border border-[#E2E8F0] p-4 flex items-center gap-3.5 hover:bg-gray-50/50 transition-colors text-left"
+            >
+              {/* Avatar */}
+              <div
+                className="w-12 h-12 rounded-full flex items-center justify-center shrink-0"
+                style={{ background: 'linear-gradient(135deg, #2563EB, #8B5CF6)' }}
+              >
+                <span className="text-white text-lg font-bold">{userInitial}</span>
+              </div>
 
-                        <div className="flex-1">
-                          <p className="font-medium text-gray-900">{item.label}</p>
-                          <p className="text-sm text-gray-500">{item.description}</p>
-                        </div>
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <p className="text-[15px] font-bold text-gray-900 truncate">
+                  {user ? userName : 'Sign In'}
+                </p>
+                {user ? (
+                  <>
+                    <p className="text-xs text-gray-500 truncate">{userEmail}</p>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                      <span className="text-[11px] text-gray-400">Synced · {lastSyncDisplay}</span>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-xs text-gray-500">Sign in to enable cloud backup</p>
+                )}
+              </div>
 
-                        <Switch
-                          checked={item.value}
-                          onCheckedChange={item.onChange}
-                        />
-                      </div>
-                    ) : item.type === 'link' ? (
-                      <button
-                        onClick={() => navigate(item.path!)}
-                        className="w-full bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow"
-                      >
-                        <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
-                          <IconComponent className="w-5 h-5 text-blue-500" />
-                        </div>
+              <ChevronRight className="w-4.5 h-4.5 text-gray-400 shrink-0" />
+            </button>
+          </motion.div>
 
-                        <div className="flex-1 text-left">
-                          <p className="font-medium text-gray-900">{item.label}</p>
-                          <p className="text-sm text-gray-500">{item.description}</p>
-                        </div>
 
-                        <ChevronRight className="w-5 h-5 text-gray-400" />
-                      </button>
-                    ) : (
-                      <div className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm">
-                        <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center">
-                          <IconComponent className="w-5 h-5 text-green-500" />
-                        </div>
+          {/* ═══ SPENDING ═══ */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+          >
+            <SectionLabel>Spending</SectionLabel>
+            <SectionCard>
+              <SettingsRow
+                icon="📂"
+                iconBg="#EEF2FF"
+                label="Categories & Rules"
+                sub="Manage and auto-assign categories"
+                onClick={() => navigate('/categories')}
+              />
+              <SettingsRow
+                icon="🔁"
+                iconBg="#FEF3C7"
+                label="Recurring Payments"
+                sub="Subscriptions & fixed bills"
+                badge={recurringCount > 0 ? recurringCount : undefined}
+                onClick={() => navigate('/settings/recurring')}
+              />
+              <SettingsRow
+                icon="🎯"
+                iconBg="#D1FAE5"
+                label="Budget Settings"
+                sub="Set monthly limits per category"
+                onClick={() => navigate('/settings/budgets')}
+              />
+              <SettingsRow
+                icon="💱"
+                iconBg="#EDE9FE"
+                label="Currency"
+                sub={currencyDisplay}
+                onClick={() => setCurrencySheetOpen(true)}
+                isLast
+              />
+            </SectionCard>
+          </motion.div>
 
-                        <div className="flex-1">
-                          <p className="font-medium text-gray-900">{item.label}</p>
-                          <p className="text-sm text-gray-500">{item.description}</p>
-                        </div>
-                      </div>
-                    )}
-                  </motion.div>
-                );
-              })}
-          </div>
 
-          {/* Google Calendar Sync card — only when signed in */}
+          {/* ═══ INTEGRATIONS ═══ */}
           {supabaseConfigured && user && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100"
             >
-              {/* Header row */}
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
-                  <Calendar className="w-5 h-5 text-blue-500" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium text-gray-900">Google Calendar Sync</p>
-                  <p className="text-xs text-gray-500">
-                    {calendarStatusLoading
-                      ? 'Checking connection…'
-                      : calendarStatus?.connected
-                        ? 'Connected'
-                        : 'Not connected'}
-                  </p>
-                </div>
-                {calendarStatus?.connected && (
-                  <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />
-                )}
-              </div>
-
-              {calendarStatus?.connected ? (
-                /* ── Connected state ── */
-                <div className="space-y-3">
-                  {/* Last synced */}
-                  <div className="flex justify-between items-center text-sm px-1">
-                    <span className="text-gray-500">Last synced</span>
-                    <span className="font-medium text-gray-900">
-                      {calendarStatus.lastSyncAt
-                        ? format(new Date(calendarStatus.lastSyncAt), 'MMM d, h:mm a')
-                        : 'Never'}
-                    </span>
+              <SectionLabel>Integrations</SectionLabel>
+              <SectionCard>
+                {/* Row */}
+                <div className="flex items-center gap-3 px-4 py-3 min-h-[56px]">
+                  <div
+                    className="w-[34px] h-[34px] rounded-[9px] flex items-center justify-center shrink-0 text-base"
+                    style={{ backgroundColor: '#DBEAFE' }}
+                  >
+                    📅
                   </div>
-
-                  {/* Sync error */}
-                  {calendarStatus.syncError && (
-                    <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 p-2 rounded-lg border border-red-100">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                      <span>Sync error: {calendarStatus.syncError}</span>
+                  <button
+                    className="flex-1 min-w-0 text-left"
+                    onClick={() => {
+                      if (calendarStatus?.connected) {
+                        setCalendarExpanded(prev => !prev);
+                      } else {
+                        // Connect flow
+                        (async () => {
+                          setCalendarConnecting(true);
+                          try {
+                            await connectGoogleCalendar();
+                          } catch (e: any) {
+                            toast.error(e.message ?? 'Failed to start connection');
+                            setCalendarConnecting(false);
+                          }
+                        })();
+                      }
+                    }}
+                  >
+                    <p className="text-[15px] font-medium text-gray-900">Google Calendar Sync</p>
+                    <div className="flex items-center gap-1.5">
+                      {calendarStatusLoading ? (
+                        <span className="text-xs text-gray-500">Checking…</span>
+                      ) : calendarStatus?.connected ? (
+                        <>
+                          <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                          <span className="text-xs text-gray-500">Connected</span>
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                          <span className="text-xs text-gray-500">
+                            {calendarConnecting ? 'Opening Google…' : 'Not connected'}
+                          </span>
+                        </>
+                      )}
                     </div>
-                  )}
+                  </button>
 
-                  {/* Auto-sync toggle */}
-                  <div className="flex items-center justify-between px-1">
-                    <span className="text-sm text-gray-600">Auto-sync</span>
+                  {/* Auto-sync toggle (only when connected) */}
+                  {calendarStatus?.connected && (
                     <Switch
                       checked={settings.googleCalendarAutoSync ?? false}
                       onCheckedChange={async (v) => {
                         updateSettings({ googleCalendarAutoSync: v });
-                        // Immediately sync when the user enables auto-sync
                         if (v) await syncCalendar(buildCalendarPayload());
                       }}
                     />
-                  </div>
-
-                  {/* Sync Now button */}
-                  <button
-                    onClick={() => syncCalendar(buildCalendarPayload())}
-                    disabled={isSyncingCalendar}
-                    className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl p-3 flex items-center justify-center gap-2 transition-colors border border-blue-100 disabled:opacity-50 shadow-sm"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${isSyncingCalendar ? 'animate-spin' : ''}`} />
-                    <span className="font-medium text-sm">
-                      {isSyncingCalendar ? 'Syncing…' : 'Sync Now'}
-                    </span>
-                  </button>
-
-                  {/* Disconnect */}
-                  <div className="text-center pt-1">
-                    <button
-                      onClick={async () => {
-                        try {
-                          await doDisconnect();
-                        } catch (e: any) {
-                          toast.error(e.message ?? 'Failed to disconnect');
-                        }
-                      }}
-                      className="text-xs text-gray-400 hover:text-red-500 transition-colors inline-flex items-center gap-1"
-                    >
-                      <Unplug className="w-3 h-3" />
-                      Disconnect Google Calendar
-                    </button>
-                  </div>
+                  )}
                 </div>
-              ) : (
-                /* ── Not connected state ── */
-                <button
-                  onClick={async () => {
-                    setCalendarConnecting(true);
-                    try {
-                      await connectGoogleCalendar();
-                      // Browser redirects — this won't run
-                    } catch (e: any) {
-                      toast.error(e.message ?? 'Failed to start connection');
-                      setCalendarConnecting(false);
-                    }
-                  }}
-                  disabled={calendarConnecting}
-                  className="w-full bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-xl p-3 flex items-center justify-center gap-2 transition-colors border border-gray-200 disabled:opacity-50 shadow-sm"
-                >
-                  <Calendar className="w-4 h-4" />
-                  <span className="font-medium text-sm">
-                    {calendarConnecting ? 'Opening Google…' : 'Connect Google Calendar'}
-                  </span>
-                </button>
-              )}
+
+                {/* Expanded details */}
+                {calendarStatus?.connected && calendarExpanded && (
+                  <div className="px-4 pb-4 space-y-3 border-t border-[#F1F5F9] pt-3">
+                    {/* Connected email */}
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-gray-500">Account</span>
+                      <span className="font-medium text-gray-900 text-right truncate ml-4">{userEmail}</span>
+                    </div>
+
+                    {/* Last synced */}
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-gray-500">Last synced</span>
+                      <span className="font-medium text-gray-900">
+                        {calendarStatus.lastSyncAt
+                          ? format(new Date(calendarStatus.lastSyncAt), 'MMM d, h:mm a')
+                          : 'Never'}
+                      </span>
+                    </div>
+
+                    {/* Sync error */}
+                    {calendarStatus.syncError && (
+                      <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 p-2 rounded-lg border border-red-100">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        <span>Sync error: {calendarStatus.syncError}</span>
+                      </div>
+                    )}
+
+                    {/* Auto-sync toggle */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Auto-sync</span>
+                      <Switch
+                        checked={settings.googleCalendarAutoSync ?? false}
+                        onCheckedChange={async (v) => {
+                          updateSettings({ googleCalendarAutoSync: v });
+                          if (v) await syncCalendar(buildCalendarPayload());
+                        }}
+                      />
+                    </div>
+
+                    {/* Sync Now */}
+                    <button
+                      onClick={() => syncCalendar(buildCalendarPayload())}
+                      disabled={isSyncingCalendar}
+                      className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl p-3 flex items-center justify-center gap-2 transition-colors border border-blue-100 disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${isSyncingCalendar ? 'animate-spin' : ''}`} />
+                      <span className="font-medium text-sm">
+                        {isSyncingCalendar ? 'Syncing…' : 'Sync Now'}
+                      </span>
+                    </button>
+
+                    {/* Disconnect */}
+                    <div className="text-center pt-1">
+                      <button
+                        onClick={async () => {
+                          try {
+                            await doDisconnect();
+                            setCalendarExpanded(false);
+                          } catch (e: any) {
+                            toast.error(e.message ?? 'Failed to disconnect');
+                          }
+                        }}
+                        className="text-xs text-red-500 hover:text-red-600 transition-colors inline-flex items-center gap-1"
+                      >
+                        <Unplug className="w-3 h-3" />
+                        Disconnect
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </SectionCard>
             </motion.div>
           )}
 
-          {/* Account & Cloud Sync */}
-          <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-            <h3 className="font-medium text-gray-900 mb-4 px-2">Account & Sync</h3>
-            <div className="space-y-4">
-              {/* Cloud Status Indicator */}
-              <div className="bg-gray-50 rounded-xl p-4 flex items-start gap-3">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${!supabaseConfigured ? 'bg-gray-200' :
-                  user ? 'bg-green-100' : 'bg-blue-100'
-                  }`}>
-                  <Cloud className={`w-4 h-4 ${!supabaseConfigured ? 'text-gray-500' :
-                    user ? 'text-green-600' : 'text-blue-600'
-                    }`} />
-                </div>
-                <div>
-                  <p className="font-medium text-gray-900 text-sm">Cloud status</p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {!supabaseConfigured
-                      ? "Local-only. Supabase not configured."
-                      : user
-                        ? `Signed in as ${user.email}`
-                        : "Configured but signed out."}
-                  </p>
-                </div>
-              </div>
 
-              {/* Sync Status & Action */}
-              {supabaseConfigured && user && (
-                <div className="px-2 space-y-3">
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600">Last Sync</span>
-                    <span className="font-medium text-gray-900">
-                      {settings.lastPullAt
-                        ? format(new Date(settings.lastPullAt), 'MMM d, h:mm a')
-                        : 'Never'}
-                    </span>
-                  </div>
-                  {settings.lastSyncError && (
-                    <div className="text-xs text-red-600 bg-red-50 p-2 rounded-lg border border-red-100">
-                      Sync failed: {settings.lastSyncError}
-                    </div>
-                  )}
-                  <button
-                    onClick={() => {
-                      toast.promise(syncData(), {
-                        loading: 'Syncing...',
-                        success: 'Sync complete',
-                        error: 'Sync failed'
-                      });
-                    }}
-                    disabled={isSyncing}
-                    className="w-full bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-xl p-3 flex items-center justify-center gap-2 transition-colors border border-gray-200 disabled:opacity-50 shadow-sm"
-                  >
-                    <Repeat className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                    <span className="font-medium text-sm">
-                      {isSyncing ? 'Syncing...' : 'Sync Now'}
-                    </span>
-                  </button>
-                </div>
-              )}
-
-              {/* Auth Actions */}
-              {supabaseConfigured && (
-                <div className="pt-2">
-                  {user ? (
-                    <button
-                      onClick={() => signOut()}
-                      className="w-full bg-red-50 hover:bg-red-100 rounded-xl p-4 flex items-center justify-between transition-colors border border-red-100"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
-                          <LogOut className="w-4 h-4 text-red-600" />
-                        </div>
-                        <div className="text-left">
-                          <p className="font-medium text-red-700 text-sm">Sign out</p>
-                        </div>
-                      </div>
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => setAuthModalOpen(true)}
-                      className="w-full bg-blue-50 hover:bg-blue-100 rounded-xl p-4 flex items-center justify-between transition-colors border border-blue-100"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                          <UserIcon className="w-4 h-4 text-blue-600" />
-                        </div>
-                        <div className="text-left">
-                          <p className="font-medium text-blue-700 text-sm">Sign in / Create account</p>
-                          <p className="text-xs text-blue-500">Enable cloud backups and sync</p>
-                        </div>
-                      </div>
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+          {/* ═══ NOTIFICATIONS ═══ */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+          >
+            <SectionLabel>Notifications</SectionLabel>
+            <SectionCard>
+              <SettingsRow
+                icon="🔔"
+                iconBg="#FEE2E2"
+                label="Notifications & Alerts"
+                sub={notifStatus}
+                onClick={() => navigate('/settings/notifications')}
+                isLast
+              />
+            </SectionCard>
+          </motion.div>
 
 
-          {/* Default Category Filter */}
-          {settings.defaultCategoryFilter && settings.defaultCategoryFilter.length > 0 && (
-            <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4">
-              <h3 className="font-medium text-blue-900 mb-2">Default Category Filter</h3>
-              <p className="text-sm text-blue-700 leading-relaxed mb-3">
-                Currently filtering by: {defaultFilterCategories}
-              </p>
-              <button
-                onClick={clearDefaultFilter}
-                className="text-sm text-blue-600 hover:text-blue-700 font-medium underline"
-              >
-                Clear Filter
-              </button>
-            </div>
-          )}
-
-          {/* Backup & Restore */}
-          <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-            <h3 className="font-medium text-gray-900 mb-4 px-2">Backup & Restore</h3>
-            <div className="space-y-2">
-              <button
-                onClick={exportBackup}
-                className="w-full bg-gray-50 hover:bg-gray-100 rounded-xl p-4 flex items-center justify-between transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                    <Tag className="w-4 h-4 text-blue-600" />
-                  </div>
-                  <div className="text-left">
-                    <p className="font-medium text-gray-900 text-sm">Export data</p>
-                    <p className="text-xs text-gray-500">Download a backup file</p>
-                  </div>
-                </div>
-              </button>
-
+          {/* ═══ DATA & PRIVACY ═══ */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <SectionLabel>Data & Privacy</SectionLabel>
+            <SectionCard>
+              <SettingsRow
+                icon="🔒"
+                iconBg="#D1FAE5"
+                label="Privacy & Data"
+                sub="How your data is stored and used"
+                onClick={() => navigate('/settings/privacy')}
+              />
+              <SettingsRow
+                icon="📤"
+                iconBg="#DBEAFE"
+                label="Export Data"
+                sub="Download your expenses as CSV or JSON"
+                onClick={() => setExportSheetOpen(true)}
+              />
+              {/* Import Data */}
               <div className="relative">
                 <input
                   type="file"
@@ -431,50 +487,55 @@ export function Settings() {
                       if (typeof content === 'string') {
                         await importBackup(content);
                       }
-                      // Reset value so the same file can be selected again
                       if (e.target) e.target.value = '';
                     };
                     reader.readAsText(file);
                   }}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                 />
-                <button
-                  className="w-full bg-gray-50 hover:bg-gray-100 rounded-xl p-4 flex items-center justify-between transition-colors pointer-events-none"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
-                      <Tag className="w-4 h-4 text-green-600" />
-                    </div>
-                    <div className="text-left">
-                      <p className="font-medium text-gray-900 text-sm">Import data</p>
-                      <p className="text-xs text-gray-500">Restore from a backup file</p>
-                    </div>
-                  </div>
-                </button>
+                <SettingsRow
+                  icon="📥"
+                  iconBg="#F0FDF4"
+                  label="Import Data"
+                  sub="Restore from a backup file"
+                  onClick={() => { }}
+                  isLast
+                />
               </div>
+            </SectionCard>
+          </motion.div>
 
+
+          {/* ═══ DANGER ZONE ═══ */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+          >
+            <SectionLabel className="text-red-400">Danger Zone</SectionLabel>
+            <SectionCard>
+              {/* Clear Local Data */}
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <button className="w-full bg-red-50 hover:bg-red-100 rounded-xl p-4 flex items-center justify-between transition-colors mt-4 border border-red-100">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
-                        <Trash2 className="w-4 h-4 text-red-600" />
-                      </div>
-                      <div className="text-left">
-                        <p className="font-medium text-red-700 text-sm">Clear local data</p>
-                        <p className="text-xs text-red-500">Delete all data on this device</p>
-                      </div>
-                    </div>
-                  </button>
+                  <div>
+                    <SettingsRow
+                      icon="🗑️"
+                      iconBg="#FEE2E2"
+                      label="Clear Local Data"
+                      labelClassName="text-red-600"
+                      sub="Removes cached data on this device only"
+                      onClick={() => { }}
+                    />
+                  </div>
                 </AlertDialogTrigger>
                 <AlertDialogContent className="w-[calc(100%-2rem)] max-w-sm rounded-2xl p-6">
                   <AlertDialogHeader className="text-left space-y-3">
                     <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-2 mx-auto">
-                      <Trash2 className="w-6 h-6 text-red-600" />
+                      <span className="text-2xl">🗑️</span>
                     </div>
-                    <AlertDialogTitle className="text-xl text-center">Delete all data?</AlertDialogTitle>
+                    <AlertDialogTitle className="text-xl text-center">Delete all local data?</AlertDialogTitle>
                     <AlertDialogDescription className="text-base text-center">
-                      This will delete all local data on this device. This action cannot be undone.
+                      This will delete all cached data on this device. This action cannot be undone.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <div className="flex gap-3 mt-8">
@@ -490,32 +551,37 @@ export function Settings() {
                   </div>
                 </AlertDialogContent>
               </AlertDialog>
-            </div>
-          </div>
 
-          {/* Privacy Notice */}
-          <div className="bg-green-50 border border-green-100 rounded-2xl p-4">
-            <h3 className="font-medium text-green-900 mb-2">Your Privacy Matters</h3>
-            <p className="text-sm text-green-700 leading-relaxed">
-              All your expense data is stored locally on your device. We don't collect, store,
-              or share any of your financial information.
+            </SectionCard>
+          </motion.div>
+
+
+          {/* ═══ APP VERSION FOOTNOTE ═══ */}
+          <div className="text-center pt-4 pb-4">
+            <p className="text-[11px] text-[#CBD5E1]">
+              CalendarSpent v1.0 · Made with ❤️ in Toronto
             </p>
           </div>
 
-          {/* App Info */}
-          <div className="text-center text-sm text-gray-500 pt-8 pb-4">
-            <p>CalendarSpent v1.0</p>
-            <p className="mt-1">A mirror, not a coach</p>
-          </div>
         </div>
       </div>
 
       <BottomNav />
 
-      {/* Auth Modal */}
-      <AuthModal
-        open={authModalOpen}
-        onOpenChange={setAuthModalOpen}
+      {/* Sheets & Modals */}
+      <AuthModal open={authModalOpen} onOpenChange={setAuthModalOpen} />
+      <AccountSheet open={accountSheetOpen} onOpenChange={setAccountSheetOpen} />
+      <CurrencySheet
+        open={currencySheetOpen}
+        onOpenChange={setCurrencySheetOpen}
+        selectedCurrency={selectedCurrency}
+        onSelect={(code) => updateSettings({ currency: code })}
+      />
+      <ExportSheet
+        open={exportSheetOpen}
+        onOpenChange={setExportSheetOpen}
+        onExportJSON={exportBackup}
+        onExportCSV={exportCSV}
       />
     </div>
   );
