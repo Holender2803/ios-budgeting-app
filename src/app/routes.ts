@@ -60,4 +60,18 @@ export const router = createBrowserRouter([
       return { Component: RuleDetail };
     },
   },
+  {
+    path: '/settings/privacy',
+    async lazy() {
+      const { PrivacyInfo } = await import('./screens/PrivacyInfo');
+      return { Component: PrivacyInfo };
+    },
+  },
+  {
+    path: '/settings/notifications',
+    async lazy() {
+      const { NotificationsPlaceholder } = await import('./screens/NotificationsPlaceholder');
+      return { Component: NotificationsPlaceholder };
+    },
+  },
 ]);
