@@ -312,6 +312,7 @@ const DEFAULT_SETTINGS: Settings = {
   notifications: true,
   googleCalendarSync: false,
   googleCalendarAutoSync: false,
+  includeRecurringInReports: false,
 };
 
 export function ExpenseProvider({ children }: { children: React.ReactNode }) {
@@ -323,9 +324,18 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [recurringExceptions, setRecurringExceptions] = useState<RecurringException[]>([]);
-  const [includeRecurring, setIncludeRecurring] = useState(false);
+  const [includeRecurring, setIncludeRecurringState] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+
+  const setIncludeRecurring = React.useCallback((value: boolean) => {
+    setIncludeRecurringState(value);
+    setSettings(prev => {
+      const newSettings = { ...prev, includeRecurringInReports: value };
+      storage.set('settings', 'app_settings', newSettings);
+      return newSettings;
+    });
+  }, []);
 
   const syncData = React.useCallback(async () => {
     if (!supabaseConfigured || !user) return;
@@ -479,6 +489,9 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
         setSettings(dbSettings);
         if (dbSettings.defaultCategoryFilter) {
           setSelectedCategoryIds(dbSettings.defaultCategoryFilter);
+        }
+        if (dbSettings.includeRecurringInReports !== undefined) {
+          setIncludeRecurringState(dbSettings.includeRecurringInReports);
         }
       }
 

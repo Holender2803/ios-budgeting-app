@@ -5,6 +5,7 @@ import { AddExpense } from './screens/AddExpense';
 import { ReceiptUpload } from './screens/ReceiptUpload';
 import { Categories } from './screens/Categories';
 import { Settings } from './screens/Settings';
+import { Reports } from './screens/Reports';
 import { TransactionEdit } from './screens/TransactionEdit';
 
 export const router = createBrowserRouter([
@@ -35,6 +36,10 @@ export const router = createBrowserRouter([
   {
     path: '/transaction/:id',
     Component: TransactionEdit,
+  },
+  {
+    path: '/reports',
+    Component: Reports,
   },
   {
     path: '/settings/recurring',
