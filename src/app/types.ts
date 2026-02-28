@@ -58,6 +58,7 @@ export interface Settings {
   lastPullAt?: number; // UTC timestamp of last successful Supabase Pull
   lastPushAt?: number; // UTC timestamp of last successful Supabase Push
   lastSyncError?: string; // Message documenting why sync failed
+  includeRecurringInReports?: boolean; // Persisted toggle state for Reports screen
 }
 
 export interface GoogleCalendarStatus {
