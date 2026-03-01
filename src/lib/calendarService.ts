@@ -54,10 +54,15 @@ export async function getCalendarStatus(): Promise<CalendarStatus> {
     const token = await getAccessToken();
     if (!token) return DISCONNECTED;
 
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData.session?.user?.id;
+    if (!userId) return DISCONNECTED;
+
     // If RLS blocks this, you'll also see auth errors here.
     const { data, error } = await supabase
         .from("google_calendar_status")
         .select("calendar_id, connected_at, last_sync_at, sync_error, status")
+        .eq("user_id", userId)
         .single();
 
     if (error || !data) return DISCONNECTED;

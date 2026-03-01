@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient';
 import { Transaction, Category, VendorRule, Settings, RecurringException } from '../app/types';
-import { storage } from '../app/utils/storage';
+import { getStorageScope, storage } from '../app/utils/storage';
 import { isUUID } from '../app/utils/uuidMigration';
 import { ensureSystemCategories } from './systemCategorySync';
 
@@ -143,6 +143,7 @@ export class SyncService {
         }
 
         const userId = session.user.id;
+        const storageScope = getStorageScope(userId);
         const lastPullAt = settings.lastPullAt ? new Date(settings.lastPullAt).toISOString() : new Date(0).toISOString();
         const lastPushAt = settings.lastPushAt || 0;
         const syncTimestamp = Date.now();
@@ -171,6 +172,7 @@ export class SyncService {
                 const { data: remoteExpenses, error: eErr } = await supabase
                     .from('expenses')
                     .select('*')
+                    .eq('user_id', userId)
                     .or(`updated_at.gt.${lastPullAt},deleted_at.gt.${lastPullAt}`);
                 if (eErr) throw eErr;
                 mergedTransactions = this.mergeCollections(localTransactions, remoteExpenses || [], mapExpenseToLocal);
@@ -184,6 +186,7 @@ export class SyncService {
                 const { data: remoteCategories, error: cErr } = await supabase
                     .from('categories')
                     .select('*')
+                    .eq('user_id', userId)
                     .or(`updated_at.gt.${lastPullAt},deleted_at.gt.${lastPullAt}`);
                 if (cErr) throw cErr;
                 mergedCategories = this.mergeCollections(localCategories, remoteCategories || [], mapCategoryToLocal);
@@ -197,6 +200,7 @@ export class SyncService {
                 const { data: remoteRules, error: rErr } = await supabase
                     .from('vendor_rules')
                     .select('*')
+                    .eq('user_id', userId)
                     .or(`updated_at.gt.${lastPullAt},deleted_at.gt.${lastPullAt}`);
                 if (rErr) throw rErr;
                 mergedRules = this.mergeCollections(localVendorRules, remoteRules || [], mapRuleToLocal);
@@ -210,6 +214,7 @@ export class SyncService {
                 const { data: remoteExceptions, error: xErr } = await supabase
                     .from('recurring_exceptions')
                     .select('*')
+                    .eq('user_id', userId)
                     .or(`updated_at.gt.${lastPullAt},deleted_at.gt.${lastPullAt}`);
                 if (xErr) throw xErr;
                 mergedExceptions = this.mergeCollections(localExceptions, remoteExceptions || [], mapExceptionToLocal);
@@ -292,10 +297,10 @@ export class SyncService {
             // ==========================================
 
             // Persist the merged collections to IndexedDB
-            for (const t of mergedTransactions) await storage.set('transactions', t.id, t);
-            for (const c of mergedCategories) await storage.set('categories', c.id, c);
-            for (const r of mergedRules) await storage.set('vendorRules', r.id, r);
-            for (const x of mergedExceptions) await storage.set('recurringExceptions', x.id, x);
+            for (const t of mergedTransactions) await storage.set('transactions', t.id, t, storageScope);
+            for (const c of mergedCategories) await storage.set('categories', c.id, c, storageScope);
+            for (const r of mergedRules) await storage.set('vendorRules', r.id, r, storageScope);
+            for (const x of mergedExceptions) await storage.set('recurringExceptions', x.id, x, storageScope);
 
             // Update settings
             const hasFatalError = syncErrors.length > 0;
@@ -305,7 +310,7 @@ export class SyncService {
                 lastSyncError: hasFatalError ? syncErrors.join(' | ') : undefined
             };
 
-            await storage.set('settings', 'app_settings', { ...settings, ...newSettings });
+            await storage.set('settings', 'app_settings', { ...settings, ...newSettings }, storageScope);
 
             // Send back to React context
             updateContextState(mergedTransactions, mergedCategories, mergedRules, mergedExceptions, newSettings);
@@ -313,7 +318,7 @@ export class SyncService {
         } catch (error: any) {
             console.error('Core Sync Failure:', error);
             const newSettings: Partial<Settings> = { lastSyncError: `Fatal: ${error.message}` };
-            await storage.set('settings', 'app_settings', { ...settings, ...newSettings });
+            await storage.set('settings', 'app_settings', { ...settings, ...newSettings }, storageScope);
             updateContextState(localTransactions, localCategories, localVendorRules, localExceptions, newSettings);
         }
     }

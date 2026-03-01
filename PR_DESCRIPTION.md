@@ -1,125 +1,102 @@
+# Fix user data isolation in PWA
+
 ## Summary
 
-This PR improves CalendarSpent's web responsiveness, fixes the desktop budgets presentation, and hardens category/vendor intelligence.
+This PR fixes a critical privacy issue where expenses could appear across accounts on a shared device, fresh browser, or fresh PWA install.
 
-It does three main things:
+Phase 1 only:
 
-1. Makes the primary app screens usable on tablet and desktop without regressing mobile.
-2. Ensures the app always preserves a fixed system set of default categories, even after JSON or spreadsheet imports.
-3. Improves vendor autocomplete and category recommendations using both user history and premade vendor rules.
+- Enforces per-user isolation for synced expense data.
+- Clears or scopes local state on auth changes.
+- Prevents authenticated users from seeing demo or phantom local data.
+- Does not implement sharing or household access.
 
-## What Changed
+## Root Cause
 
-### Responsive web polish
-- Added shared responsive shell utilities for narrow forms and wider dashboard screens
-- Improved desktop layout behavior for:
-  - Home
-  - Reports
-  - Budgets
-  - Settings
-  - Privacy
-  - Add Expense
-  - Edit Expense
-- Switched desktop navigation from a stretched bottom bar to a cleaner left-side nav rail on wide screens
-- Constrained sheets and modals on desktop so they render as centered panels instead of full-width mobile drawers
-- Improved receipt preview and full-image modal behavior on larger screens
+The issue had two contributing paths:
 
-### Budgets desktop cleanup
-- Reworked the budgets page layout so the desktop view reads as a proper dashboard instead of a mobile stack on a wide canvas
-- Fixed the insight/list balance so non-current months do not leave awkward empty desktop space
+1. Local persistence leak
+   - The app hydrated from a single shared IndexedDB/localStorage namespace before auth state was fully resolved.
+   - That allowed a later login on the same device/browser to inherit cached data from a previous user.
 
-### Default categories are now enforced
-- Replaced the previous system category set with the required default categories
-- Added enforcement so default categories always exist locally
-- Preserved system categories across:
-  - initial hydration
-  - JSON backup import
-  - spreadsheet import
-  - sync reconciliation
-  - clear/reset flows
-- Kept imported non-default categories as custom categories instead of letting imports replace the system set
-- Prevented deleted or missing category references from falling back to arbitrary categories by routing them to `Uncategorized`
+2. Server query hardening gap
+   - Sync pulls were using broad `select('*')` queries without explicit `user_id` filters in the client.
+   - The repo had RLS definitions in `supabase/schema.sql`, but there was no migration ensuring those protections were actually applied in the target database.
 
-### Vendor autocomplete and category recommendations
-- Added a premade vendor intelligence map
-- Vendor suggestions now come from:
-  - user transaction history
-  - premade vendor list
-- Matching is case-insensitive and punctuation-insensitive
-- Suggestion ranking now prefers:
-  - exact match
-  - startsWith
-  - contains
-- Category recommendation now uses the best vendor match with the same ranking logic
-- Existing manual category choice behavior is preserved
+There is no service worker cache path in this repo, so this was not caused by a Workbox/service-worker response cache.
 
-### Dev verification output
-- Added a dev-only console check that logs:
-  - whether defaults exist
-  - `Uber Eats -> Takeout / Delivery`
-  - `Fido Mobile -> Internet & Mobile`
-  - `Rent -> Rent / Housing`
-  - `Amazon -> Amazon`
+## Changes
 
-## User-Facing Behavior
+### Database
 
-- Desktop users get a cleaner layout with a left nav rail and properly constrained content
-- Add/Edit forms stay mobile-first but feel less cramped on tablet and less awkward on desktop
-- Sheets and receipt previews no longer feel like oversized mobile surfaces on large screens
-- Default categories remain available even after import operations
-- Vendor autocomplete works for both new users and returning users
-- Premade vendors can suggest categories immediately, even with no prior history
+- Added `supabase/migrations/20260301_user_data_isolation.sql`.
+- Ensures `expenses`, `categories`, `vendor_rules`, and `recurring_exceptions` have `user_id`.
+- Enables RLS on those tables.
+- Recreates policies so authenticated users can only `SELECT/INSERT/UPDATE/DELETE` rows where `user_id = auth.uid()`.
+- Adds supporting indexes on `user_id`, `updated_at`, and `deleted_at`.
+
+### Client
+
+- Refactored IndexedDB storage to use scoped keys:
+  - `guest`
+  - `user:<auth.uid()>`
+- Rehydration is now auth-aware instead of running once globally on app startup.
+- On login/logout/account switch:
+  - in-memory app state resets
+  - the app hydrates only from the active user scope
+  - cross-user cache bleed is prevented
+- Authenticated users no longer seed demo data into their signed-in experience.
+- Import/reset flows clear only the active local scope instead of mixing user caches.
+
+### Query hardening
+
+- Sync reads now explicitly filter by `user_id`.
+- Calendar status read is explicitly filtered by `user_id`.
+- Sync persistence writes are stored in the active user scope.
 
 ## Files Changed
 
-- `PR_DESCRIPTION.md`
-- `src/styles/index.css`
-- `src/app/components/BottomNav.tsx`
-- `src/app/components/CategoryFilterBar.tsx`
-- `src/app/components/budgets/BudgetCategorySheet.tsx`
-- `src/app/components/category/RecentCategories.tsx`
-- `src/app/components/receipt/ReceiptAttachmentField.tsx`
-- `src/app/components/reports/CustomDateSheet.tsx`
-- `src/app/components/settings/AccountSheet.tsx`
-- `src/app/components/settings/CurrencySheet.tsx`
-- `src/app/components/settings/ExportSheet.tsx`
-- `src/app/components/settings/SpreadsheetImportSheet.tsx`
-- `src/app/constants/systemCategories.ts`
-- `src/app/constants/vendorIntelligence.ts`
 - `src/app/context/ExpenseContext.tsx`
-- `src/app/hooks/useVendorSuggestions.ts`
-- `src/app/screens/AddExpense.tsx`
-- `src/app/screens/BudgetsTracking.tsx`
-- `src/app/screens/Home.tsx`
-- `src/app/screens/PrivacyInfo.tsx`
-- `src/app/screens/Reports.tsx`
-- `src/app/screens/Settings.tsx`
-- `src/app/screens/TransactionEdit.tsx`
-- `src/app/utils/generateDemoData.ts`
+- `src/app/utils/storage.ts`
+- `src/lib/syncService.ts`
+- `src/lib/calendarService.ts`
+- `supabase/migrations/20260301_user_data_isolation.sql`
 
-## Manual Test Checklist
+## Manual QA
 
-- Check `/`, `/reports`, `/budgets`, `/settings`, `/add` on:
-  - `375px`
-  - `430px`
-  - `768px`
-  - `1024px`
-  - `1440px`
-- Confirm desktop navigation looks intentional and not stretched
-- Confirm Add Expense and Edit Expense remain solid on mobile and usable on desktop
-- Confirm receipt preview and full-image modal do not overflow on desktop
-- Confirm budgets screen looks balanced on desktop for:
-  - current month
-  - non-current month
-- Confirm default categories still exist after:
-  - app load
-  - JSON import
-  - spreadsheet import
-- Type `Uber Eats` and confirm category suggestion is `Takeout / Delivery`
-- Type `Fido Mobile` and confirm category suggestion is `Internet & Mobile`
-- Type `Rent` and confirm category suggestion is `Rent / Housing`
-- Type `Amazon` and confirm category suggestion is `Amazon`
+1. Run the Supabase SQL migration against the target project.
+2. Start the app locally with `npm run dev`.
+3. Test account A:
+   - Log in
+   - Create multiple expenses
+   - Confirm they appear normally
+4. Test account B in incognito or a fresh browser:
+   - Log in
+   - Confirm B sees only B data or an empty state
+   - Confirm A's Jan/Feb expenses never appear
+5. Test same-device switch:
+   - Log in as A
+   - Log out
+   - Log in as B
+   - Confirm no A data remains visible or flashes in the UI
+6. Test PWA/fresh install path:
+   - Open from a fresh browser or installed shortcut
+   - Log in as B
+   - Confirm no demo or phantom expenses appear after login
+7. Verify network behavior:
+   - Confirm expense sync/read paths are scoped to the authenticated user
+   - No unscoped expense fetch path should return shared data
 
 ## Verification
 
-- `npm run build` passes
+- `npm run build`
+
+Build passed successfully.
+
+## Out of Scope
+
+- Household sharing
+- Explicit shared views
+- Attribution/reporting for shared expenses
+
+Those remain Phase 2 work.
