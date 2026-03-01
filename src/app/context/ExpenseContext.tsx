@@ -8,6 +8,9 @@ import { ensureUUIDs } from '../utils/uuidMigration';
 import { SyncService } from '../../lib/syncService';
 import { useAuth } from './AuthContext';
 import { LocalTransaction } from '../../lib/calendarService';
+import { ParsedSpreadsheetImport, SpreadsheetImportSummary } from '../utils/spreadsheetImport';
+import { SYSTEM_CATEGORIES, isSystemCategoryId } from '../constants/systemCategories';
+import { ensureSystemCategories } from '../../lib/systemCategorySync';
 
 interface ExpenseContextType {
   transactions: Transaction[];
@@ -40,6 +43,10 @@ interface ExpenseContextType {
   filteredTransactions: Transaction[];
   exportBackup: () => void;
   importBackup: (jsonString: string) => Promise<void>;
+  importSpreadsheet: (
+    data: ParsedSpreadsheetImport,
+    onProgress?: (message: string, percent: number) => void,
+  ) => Promise<SpreadsheetImportSummary>;
   clearAllData: () => Promise<void>;
   isHydrated: boolean;
   syncData: () => Promise<void>;
@@ -51,50 +58,7 @@ interface ExpenseContextType {
 
 const ExpenseContext = createContext<ExpenseContextType | undefined>(undefined);
 
-const DEFAULT_CATEGORIES: Category[] = [
-  // Everyday
-  { id: 'cat-food', name: 'Food & Dining', icon: 'UtensilsCrossed', color: '#E76F51', group: 'Everyday' },
-  { id: 'cat-coffee', name: 'Coffee & Drinks', icon: 'Coffee', color: '#A0826D', group: 'Everyday' },
-  { id: 'cat-groceries', name: 'Groceries', icon: 'ShoppingCart', color: '#81B29A', group: 'Everyday' },
-  { id: 'cat-shopping', name: 'Shopping', icon: 'ShoppingBag', color: '#3D9BE9', group: 'Everyday' },
-  { id: 'cat-personal', name: 'Personal Care', icon: 'User', color: '#9B51E0', group: 'Everyday' },
-  { id: 'cat-ent', name: 'Entertainment', icon: 'Film', color: '#F4A261', group: 'Everyday' },
-  { id: 'cat-hobbies', name: 'Hobbies', icon: 'Gamepad2', color: '#27AE60', group: 'Everyday' },
-  { id: 'cat-online-shopping', name: 'Online Shopping', icon: 'Globe', color: '#6366F1', group: 'Everyday' },
-
-  // Home & Life
-  { id: 'cat-rent', name: 'Rent / Housing', icon: 'Home', color: '#2D9CDB', group: 'Home & Life' },
-  { id: 'cat-util', name: 'Utilities', icon: 'Zap', color: '#F2C94C', group: 'Home & Life' },
-  { id: 'cat-subs', name: 'Subscriptions', icon: 'Repeat', color: '#BB6BD9', group: 'Home & Life' },
-  { id: 'cat-household', name: 'Household', icon: 'Box', color: '#828282', group: 'Home & Life' },
-  { id: 'cat-furniture', name: 'Furniture & Decor', icon: 'Armchair', color: '#8B4513', group: 'Home & Life' },
-
-  // Getting Around
-  { id: 'cat-transport', name: 'Transport', icon: 'Bus', color: '#E07A5F', group: 'Getting Around' },
-  { id: 'cat-gas', name: 'Gas', icon: 'Fuel', color: '#333333', group: 'Getting Around' },
-  { id: 'cat-parking', name: 'Parking', icon: 'ParkingCircle', color: '#2F80ED', group: 'Getting Around' },
-  { id: 'cat-car', name: 'Car Maintenance', icon: 'Wrench', color: '#4F4F4F', group: 'Getting Around' },
-  { id: 'cat-travel', name: 'Travel', icon: 'Plane', color: '#56CCF2', group: 'Getting Around' },
-
-  // Health & Growth
-  { id: 'cat-health', name: 'Health & Medical', icon: 'HeartPulse', color: '#EB5757', group: 'Health & Growth' },
-  { id: 'cat-fitness', name: 'Fitness', icon: 'Dumbbell', color: '#27AE60', group: 'Health & Growth' },
-  { id: 'cat-edu', name: 'Education', icon: 'GraduationCap', color: '#2F80ED', group: 'Health & Growth' },
-  { id: 'cat-child', name: 'Childcare', icon: 'Baby', color: '#F2994A', group: 'Health & Growth' },
-
-  // Money Matters
-  { id: 'cat-taxes', name: 'Taxes & Fees', icon: 'Receipt', color: '#828282', group: 'Money Matters' },
-  { id: 'cat-insure', name: 'Insurance', icon: 'ShieldCheck', color: '#2196F3', group: 'Money Matters' },
-  { id: 'cat-savings', name: 'Savings', icon: 'PiggyBank', color: '#6FCF97', group: 'Money Matters' },
-  { id: 'cat-debt', name: 'Debt Payments', icon: 'CreditCard', color: '#BDBDBD', group: 'Money Matters' },
-  { id: 'cat-bank', name: 'Bank Charges', icon: 'AlertCircle', color: '#4F4F4F', group: 'Money Matters' },
-
-  // Giving
-  { id: 'cat-gifts', name: 'Gifts', icon: 'Gift', color: '#F2C94C', group: 'Giving' },
-  { id: 'cat-donations', name: 'Donations', icon: 'Heart', color: '#EB5757', group: 'Giving' },
-  // Fallback
-  { id: 'cat-uncategorized', name: 'Uncategorized', icon: 'Tag', color: '#94A3B8', group: 'Other' },
-];
+const DEFAULT_CATEGORIES: Category[] = SYSTEM_CATEGORIES.map((category) => ({ ...category }));
 
 export const CANONICAL_GROUPS = [
   'Everyday',
@@ -313,6 +277,50 @@ const DEFAULT_SETTINGS: Settings = {
   googleCalendarSync: false,
   googleCalendarAutoSync: false,
   includeRecurringInReports: false,
+  disableDemoData: false,
+};
+
+const DEFAULT_IMPORTED_CATEGORY = {
+  icon: 'Tag',
+  color: '#94A3B8',
+  group: 'Other',
+} as const;
+
+const sanitizeImportedGroup = (group?: string) => {
+  if (!group) return DEFAULT_IMPORTED_CATEGORY.group;
+  const match = CANONICAL_GROUPS.find((candidate) => candidate.toLowerCase() === group.trim().toLowerCase());
+  return match ?? DEFAULT_IMPORTED_CATEGORY.group;
+};
+
+const sanitizeImportedColor = (color?: string) => {
+  if (!color) return DEFAULT_IMPORTED_CATEGORY.color;
+  const normalized = color.trim();
+  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(normalized)
+    ? normalized
+    : DEFAULT_IMPORTED_CATEGORY.color;
+};
+
+const getNextRecurrenceDate = (date: Date, cadence: Transaction['recurrenceType']) => {
+  switch (cadence) {
+    case 'daily':
+      return addDays(date, 1);
+    case 'weekly':
+      return addWeeks(date, 1);
+    case 'yearly':
+      return addYears(date, 1);
+    case 'monthly':
+    default:
+      return addMonths(date, 1);
+  }
+};
+
+const buildTransactionSignature = (transaction: Pick<Transaction, 'date' | 'amount' | 'vendor' | 'category'>) => {
+  return [
+    transaction.date,
+    transaction.amount.toFixed(2),
+    normalizeLabel(transaction.vendor),
+    transaction.category,
+  ].join('|');
 };
 
 export function ExpenseProvider({ children }: { children: React.ReactNode }) {
@@ -410,7 +418,8 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       }
 
       // 3. Pipeline initialization
-      let pipelineTransactions = dbTransactions.length > 0 ? dbTransactions : generateDemoData();
+      const shouldSeedDemoData = dbTransactions.length === 0 && !dbSettings?.disableDemoData;
+      let pipelineTransactions = dbTransactions.length > 0 ? dbTransactions : (shouldSeedDemoData ? generateDemoData() : []);
       let pipelineCategories = dbCategories.length > 0 ? dbCategories : DEFAULT_CATEGORIES;
       let pipelineRules = dbRules;
       let pipelineExceptions = dbExceptions;
@@ -531,9 +540,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
         const endDate = t.endDate ? parseISO(t.endDate) : horizon;
         const limit = isBefore(endDate, cutoffDate) ? endDate : cutoffDate;
 
-        let nextDate = t.recurrenceType === 'weekly'
-          ? addWeeks(currentDate, 1)
-          : addMonths(currentDate, 1);
+        let nextDate = getNextRecurrenceDate(currentDate, t.recurrenceType);
 
         while (!isAfter(nextDate, limit)) {
           const dateStr = format(nextDate, 'yyyy-MM-dd');
@@ -549,9 +556,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
             skipNote: exception?.note,
           } as any);
 
-          nextDate = t.recurrenceType === 'weekly'
-            ? addWeeks(nextDate, 1)
-            : addMonths(nextDate, 1);
+          nextDate = getNextRecurrenceDate(nextDate, t.recurrenceType);
         }
       }
     });
@@ -799,7 +804,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
 
   const deleteCategory = (id: string) => {
     // Only allow deleting user-created categories (not starting with cat-)
-    if (id.startsWith('cat-')) {
+    if (isSystemCategoryId(id)) {
       toast.error('System categories cannot be deleted');
       return;
     }
@@ -1005,8 +1010,13 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       const parsed = JSON.parse(jsonString);
 
       // Basic validation
-      if (!parsed.version || !Array.isArray(parsed.expenses)) {
-        throw new Error('Invalid backup file format');
+      if (
+        !parsed ||
+        typeof parsed !== 'object' ||
+        !parsed.version ||
+        !Array.isArray(parsed.expenses)
+      ) {
+        throw new Error('Invalid Backup JSON. Use a backup exported from CalendarSpent.');
       }
 
       // Clear all existing data from DB
@@ -1041,8 +1051,183 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       toast.success('Backup imported successfully');
     } catch (error) {
       console.error('Import failed:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to import backup. Invalid file.');
+      toast.error(error instanceof Error ? error.message : 'Failed to import backup JSON.');
     }
+  };
+
+  const importSpreadsheet = async (
+    data: ParsedSpreadsheetImport,
+    onProgress?: (message: string, percent: number) => void,
+  ): Promise<SpreadsheetImportSummary> => {
+    const activeCategories = categories.filter((category) => !category.deletedAt);
+    const activeTransactions = transactions.filter((transaction) => !transaction.deletedAt && !transaction.isVirtual);
+    const nextCategories = [...activeCategories];
+    const nextTransactions = [...activeTransactions];
+    const existingCategoryMap = new Map(
+      activeCategories.map((category) => [normalizeLabel(category.name), category]),
+    );
+    const seenTransactionSignatures = new Set(
+      activeTransactions.map((transaction) => buildTransactionSignature(transaction)),
+    );
+    const recurringKeyMap = new Map(
+      activeTransactions
+        .filter((transaction) => transaction.isRecurring && transaction.recurringKey)
+        .map((transaction) => [transaction.recurringKey as string, transaction.id]),
+    );
+
+    const createdCategories: Category[] = [];
+    const createdRecurring: Transaction[] = [];
+    const createdExpenses: Transaction[] = [];
+    let skippedDuplicates = 0;
+    let skippedRecurringExpenseRows = 0;
+
+    const updateImportProgress = (message: string, percent: number) => {
+      onProgress?.(message, percent);
+    };
+
+    const ensureCategory = (
+      categoryName: string,
+      options?: { group?: string; icon?: string; color?: string },
+    ) => {
+      const normalizedName = normalizeLabel(categoryName);
+      const existing = existingCategoryMap.get(normalizedName);
+      if (existing) {
+        return existing.id;
+      }
+
+      const newCategory: Category = {
+        id: crypto.randomUUID(),
+        name: categoryName.trim(),
+        group: sanitizeImportedGroup(options?.group),
+        icon: options?.icon?.trim() || DEFAULT_IMPORTED_CATEGORY.icon,
+        color: sanitizeImportedColor(options?.color),
+        updatedAt: Date.now(),
+      };
+
+      existingCategoryMap.set(normalizedName, newCategory);
+      nextCategories.push(newCategory);
+      createdCategories.push(newCategory);
+      return newCategory.id;
+    };
+
+    updateImportProgress('Creating categories', 20);
+    data.categories.forEach((row) => {
+      ensureCategory(row.name, {
+        group: row.group,
+        icon: row.icon,
+        color: row.color,
+      });
+    });
+
+    data.recurring.forEach((row) => {
+      ensureCategory(row.category);
+    });
+
+    data.expenses.forEach((row) => {
+      ensureCategory(row.category);
+    });
+
+    updateImportProgress('Creating recurring items', 55);
+    data.recurring.forEach((row) => {
+      const existingRecurringId = recurringKeyMap.get(row.recurringKey);
+      if (existingRecurringId) {
+        skippedDuplicates += 1;
+        return;
+      }
+
+      const categoryId = ensureCategory(row.category);
+      const recurringTransaction: Transaction = {
+        id: crypto.randomUUID(),
+        vendor: row.vendor.trim(),
+        amount: row.amount,
+        category: categoryId,
+        date: row.startDate,
+        note: row.notes,
+        isRecurring: true,
+        recurrenceType: row.cadence,
+        recurringKey: row.recurringKey,
+        endDate: row.endDate,
+        isActive: true,
+        updatedAt: Date.now(),
+      };
+
+      const signature = buildTransactionSignature(recurringTransaction);
+      if (seenTransactionSignatures.has(signature)) {
+        skippedDuplicates += 1;
+        const matchingTransaction = nextTransactions.find(
+          (transaction) =>
+            transaction.isRecurring && buildTransactionSignature(transaction) === signature,
+        );
+        if (matchingTransaction) {
+          recurringKeyMap.set(row.recurringKey, matchingTransaction.id);
+        }
+        return;
+      }
+
+      seenTransactionSignatures.add(signature);
+      recurringKeyMap.set(row.recurringKey, recurringTransaction.id);
+      nextTransactions.push(recurringTransaction);
+      createdRecurring.push(recurringTransaction);
+    });
+
+    updateImportProgress('Importing expenses', 80);
+    data.expenses.forEach((row) => {
+      if (row.isRecurring && row.recurringKey) {
+        skippedRecurringExpenseRows += 1;
+        return;
+      }
+
+      const categoryId = ensureCategory(row.category);
+      const expenseTransaction: Transaction = {
+        id: crypto.randomUUID(),
+        vendor: row.vendor.trim(),
+        amount: row.amount,
+        category: categoryId,
+        date: row.date,
+        note: row.notes,
+        currency: row.currency,
+        updatedAt: Date.now(),
+      };
+
+      const signature = buildTransactionSignature(expenseTransaction);
+      if (seenTransactionSignatures.has(signature)) {
+        skippedDuplicates += 1;
+        return;
+      }
+
+      seenTransactionSignatures.add(signature);
+      nextTransactions.push(expenseTransaction);
+      createdExpenses.push(expenseTransaction);
+    });
+
+    updateImportProgress('Saving imported data', 95);
+    setCategories((prev) => [...prev, ...createdCategories]);
+    setTransactions((prev) => [...prev, ...createdRecurring, ...createdExpenses]);
+
+    for (const category of createdCategories) {
+      await storage.set('categories', category.id, category);
+    }
+
+    for (const transaction of [...createdRecurring, ...createdExpenses]) {
+      await storage.set('transactions', transaction.id, transaction);
+    }
+
+    const warnings = [...data.warnings];
+    if (skippedRecurringExpenseRows > 0) {
+      warnings.push(
+        `Skipped ${skippedRecurringExpenseRows} recurring-linked expense row${skippedRecurringExpenseRows === 1 ? '' : 's'} because CalendarSpent generates those occurrences from the Recurring sheet.`,
+      );
+    }
+
+    updateImportProgress('Import complete', 100);
+    return {
+      expenses: createdExpenses.length,
+      categories: createdCategories.length,
+      recurring: createdRecurring.length,
+      skippedDuplicates,
+      skippedRecurringExpenseRows,
+      warnings,
+    };
   };
 
   const clearAllData = async () => {
@@ -1053,14 +1238,32 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user?.id) {
           const uid = session.user.id;
-          // Hard-delete all user rows (independent — one failure won't block others)
-          const tables = ['expenses', 'categories', 'vendor_rules', 'recurring_exceptions'] as const;
-          await Promise.allSettled(
-            tables.map(table =>
-              supabase.from(table).delete().eq('user_id', uid)
-                .then(({ error }) => { if (error) console.warn(`Supabase clear ${table}:`, error.message); })
-            )
-          );
+          const remoteTables = [
+            'budgets',
+            'google_calendar_events',
+            'recurring_exceptions',
+            'vendor_rules',
+            'expenses',
+          ] as const;
+
+          for (const table of remoteTables) {
+            const { error } = await supabase.from(table).delete().eq('user_id', uid);
+            if (error) {
+              throw new Error(`Failed to clear ${table}: ${error.message}`);
+            }
+          }
+
+          const { error: categoryError } = await supabase
+            .from('categories')
+            .delete()
+            .eq('user_id', uid)
+            .eq('is_system', false);
+
+          if (categoryError) {
+            throw new Error(`Failed to clear custom categories: ${categoryError.message}`);
+          }
+
+          await ensureSystemCategories(uid);
         }
       }
 
@@ -1074,16 +1277,30 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem('indexeddb_migrated');
       localStorage.removeItem('category_schema_v1');
 
+      const freshSettings: Settings = {
+        ...DEFAULT_SETTINGS,
+        defaultCategoryFilter: [],
+        disableDemoData: true,
+        lastPullAt: Date.now(),
+        lastPushAt: Date.now(),
+        lastSyncError: undefined,
+      };
+
+      for (const category of DEFAULT_CATEGORIES) {
+        await storage.set('categories', category.id, category);
+      }
+      await storage.set('settings', 'app_settings', freshSettings);
+
       // ── 3. Reset React state ──────────────────────────────────────────────
       setTransactions([]);
       setCategories(DEFAULT_CATEGORIES);
       setVendorRules([]);
-      setSettings(DEFAULT_SETTINGS);
+      setSettings(freshSettings);
       setRecurringExceptions([]);
       setSelectedCategoryIds([]);
       setIncludeRecurring(false);
 
-      toast.success('All data cleared');
+      toast.success('Expenses, budgets, recurring items, and custom categories were cleared');
     } catch (error) {
       console.error('Clear data failed:', error);
       toast.error('Failed to clear data');
@@ -1132,6 +1349,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
         filteredTransactions,
         exportBackup,
         importBackup,
+        importSpreadsheet,
         clearAllData,
         isHydrated,
         syncData,

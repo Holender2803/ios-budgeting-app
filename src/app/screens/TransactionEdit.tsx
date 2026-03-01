@@ -9,6 +9,8 @@ import { Textarea } from '../components/ui/textarea';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 
+const RECURRENCE_OPTIONS = ['daily', 'weekly', 'monthly', 'yearly'] as const;
+
 export function TransactionEdit() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -36,7 +38,7 @@ export function TransactionEdit() {
   const [date, setDate] = useState(transaction?.date || '');
   const [note, setNote] = useState(transaction?.note || '');
   const [isRecurring, setIsRecurring] = useState(transaction?.isRecurring || false);
-  const [recurrenceType, setRecurrenceType] = useState<'weekly' | 'monthly'>(transaction?.recurrenceType || 'monthly');
+  const [recurrenceType, setRecurrenceType] = useState<typeof RECURRENCE_OPTIONS[number]>(transaction?.recurrenceType || 'monthly');
   const [endDate, setEndDate] = useState(transaction?.endDate || '');
   const [categorySource, setCategorySource] = useState<'manual' | 'suggestion'>('manual');
 
@@ -252,27 +254,20 @@ export function TransactionEdit() {
           </div>
 
           {isRecurring && (
-            <div className="flex gap-2 pt-2 border-t border-gray-100">
-              <button
-                type="button"
-                onClick={() => setRecurrenceType('weekly')}
-                className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${recurrenceType === 'weekly'
-                  ? 'bg-black text-white'
-                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                  }`}
-              >
-                Weekly
-              </button>
-              <button
-                type="button"
-                onClick={() => setRecurrenceType('monthly')}
-                className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${recurrenceType === 'monthly'
-                  ? 'bg-black text-white'
-                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                  }`}
-              >
-                Monthly
-              </button>
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100">
+              {RECURRENCE_OPTIONS.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setRecurrenceType(option)}
+                  className={`py-2 text-sm font-medium rounded-lg transition-colors ${recurrenceType === option
+                    ? 'bg-black text-white'
+                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                    }`}
+                >
+                  {option[0].toUpperCase() + option.slice(1)}
+                </button>
+              ))}
             </div>
           )}
 

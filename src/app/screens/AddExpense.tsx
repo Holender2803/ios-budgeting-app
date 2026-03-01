@@ -11,6 +11,8 @@ import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 
+const RECURRENCE_OPTIONS = ['daily', 'weekly', 'monthly', 'yearly'] as const;
+
 export function AddExpense() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -23,7 +25,7 @@ export function AddExpense() {
   const [date, setDate] = useState(selectedDate);
   const [note, setNote] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
-  const [recurrenceType, setRecurrenceType] = useState<'weekly' | 'monthly'>('monthly');
+  const [recurrenceType, setRecurrenceType] = useState<typeof RECURRENCE_OPTIONS[number]>('monthly');
   const [endDate, setEndDate] = useState('');
   const [categorySource, setCategorySource] = useState<'manual' | 'suggestion'>('manual');
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -234,27 +236,20 @@ export function AddExpense() {
           </div>
 
           {isRecurring && (
-            <div className="flex gap-2 pt-2 border-t border-gray-100">
-              <button
-                type="button"
-                onClick={() => setRecurrenceType('weekly')}
-                className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${recurrenceType === 'weekly'
-                  ? 'bg-black text-white'
-                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                  }`}
-              >
-                Weekly
-              </button>
-              <button
-                type="button"
-                onClick={() => setRecurrenceType('monthly')}
-                className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${recurrenceType === 'monthly'
-                  ? 'bg-black text-white'
-                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                  }`}
-              >
-                Monthly
-              </button>
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100">
+              {RECURRENCE_OPTIONS.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setRecurrenceType(option)}
+                  className={`py-2 text-sm font-medium rounded-lg transition-colors ${recurrenceType === option
+                    ? 'bg-black text-white'
+                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                    }`}
+                >
+                  {option[0].toUpperCase() + option.slice(1)}
+                </button>
+              ))}
             </div>
           )}
 
