@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { useExpense, CANONICAL_GROUPS } from '../context/ExpenseContext';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
+import { ensureSystemCategories } from '../../lib/systemCategorySync';
 import type { Category, Transaction } from '../types';
 
 interface BudgetRow {
@@ -122,6 +123,8 @@ export function BudgetSettings() {
       if (!supabaseConfigured || !supabase || !user) return;
       setLoadingBudgets(true);
       try {
+        await ensureSystemCategories(user.id);
+
         const { data, error } = await supabase
           .from('budgets')
           .select('id, category_id, monthly_limit')
@@ -234,6 +237,8 @@ export function BudgetSettings() {
 
     setSheetSaving(true);
     try {
+      await ensureSystemCategories(user.id);
+
       const payload = {
         user_id: user.id,
         category_id: sheetCategory.id,
@@ -318,6 +323,8 @@ export function BudgetSettings() {
     if (!supabaseConfigured || !supabase || !user || !suggested) return;
 
     try {
+      await ensureSystemCategories(user.id);
+
       const payload = {
         user_id: user.id,
         category_id: categoryId,
@@ -362,6 +369,8 @@ export function BudgetSettings() {
 
     setApplyingAll(true);
     try {
+      await ensureSystemCategories(user.id);
+
       const payload = entries.map(([categoryId, amount]) => ({
         user_id: user.id,
         category_id: categoryId,
@@ -998,4 +1007,3 @@ export function BudgetSettings() {
     </div>
   );
 }
-

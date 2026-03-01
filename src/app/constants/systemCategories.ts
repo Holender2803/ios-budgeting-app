@@ -1,0 +1,36 @@
+import { Category } from '../types';
+
+export const SYSTEM_CATEGORIES: Category[] = [
+  { id: 'cat-food', name: 'Food & Dining', icon: 'UtensilsCrossed', color: '#E76F51', group: 'Everyday' },
+  { id: 'cat-coffee', name: 'Coffee & Drinks', icon: 'Coffee', color: '#A0826D', group: 'Everyday' },
+  { id: 'cat-groceries', name: 'Groceries', icon: 'ShoppingCart', color: '#81B29A', group: 'Everyday' },
+  { id: 'cat-shopping', name: 'Shopping', icon: 'ShoppingBag', color: '#3D9BE9', group: 'Everyday' },
+  { id: 'cat-personal', name: 'Personal Care', icon: 'User', color: '#9B51E0', group: 'Everyday' },
+  { id: 'cat-ent', name: 'Entertainment', icon: 'Film', color: '#F4A261', group: 'Everyday' },
+  { id: 'cat-hobbies', name: 'Hobbies', icon: 'Gamepad2', color: '#27AE60', group: 'Everyday' },
+  { id: 'cat-online-shopping', name: 'Online Shopping', icon: 'Globe', color: '#6366F1', group: 'Everyday' },
+  { id: 'cat-rent', name: 'Rent / Housing', icon: 'Home', color: '#2D9CDB', group: 'Home & Life' },
+  { id: 'cat-util', name: 'Utilities', icon: 'Zap', color: '#F2C94C', group: 'Home & Life' },
+  { id: 'cat-subs', name: 'Subscriptions', icon: 'Repeat', color: '#BB6BD9', group: 'Home & Life' },
+  { id: 'cat-household', name: 'Household', icon: 'Box', color: '#828282', group: 'Home & Life' },
+  { id: 'cat-furniture', name: 'Furniture & Decor', icon: 'Armchair', color: '#8B4513', group: 'Home & Life' },
+  { id: 'cat-transport', name: 'Transport', icon: 'Bus', color: '#E07A5F', group: 'Getting Around' },
+  { id: 'cat-gas', name: 'Gas', icon: 'Fuel', color: '#333333', group: 'Getting Around' },
+  { id: 'cat-parking', name: 'Parking', icon: 'ParkingCircle', color: '#2F80ED', group: 'Getting Around' },
+  { id: 'cat-car', name: 'Car Maintenance', icon: 'Wrench', color: '#4F4F4F', group: 'Getting Around' },
+  { id: 'cat-travel', name: 'Travel', icon: 'Plane', color: '#56CCF2', group: 'Getting Around' },
+  { id: 'cat-health', name: 'Health & Medical', icon: 'HeartPulse', color: '#EB5757', group: 'Health & Growth' },
+  { id: 'cat-fitness', name: 'Fitness', icon: 'Dumbbell', color: '#27AE60', group: 'Health & Growth' },
+  { id: 'cat-edu', name: 'Education', icon: 'GraduationCap', color: '#2F80ED', group: 'Health & Growth' },
+  { id: 'cat-child', name: 'Childcare', icon: 'Baby', color: '#F2994A', group: 'Health & Growth' },
+  { id: 'cat-taxes', name: 'Taxes & Fees', icon: 'Receipt', color: '#828282', group: 'Money Matters' },
+  { id: 'cat-insure', name: 'Insurance', icon: 'ShieldCheck', color: '#2196F3', group: 'Money Matters' },
+  { id: 'cat-savings', name: 'Savings', icon: 'PiggyBank', color: '#6FCF97', group: 'Money Matters' },
+  { id: 'cat-debt', name: 'Debt Payments', icon: 'CreditCard', color: '#BDBDBD', group: 'Money Matters' },
+  { id: 'cat-bank', name: 'Bank Charges', icon: 'AlertCircle', color: '#4F4F4F', group: 'Money Matters' },
+  { id: 'cat-gifts', name: 'Gifts', icon: 'Gift', color: '#F2C94C', group: 'Giving' },
+  { id: 'cat-donations', name: 'Donations', icon: 'Heart', color: '#EB5757', group: 'Giving' },
+  { id: 'cat-uncategorized', name: 'Uncategorized', icon: 'Tag', color: '#94A3B8', group: 'Other' },
+];
+
+export const isSystemCategoryId = (id: string) => id.startsWith('cat-');

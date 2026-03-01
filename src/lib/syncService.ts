@@ -2,6 +2,7 @@ import { supabase } from './supabaseClient';
 import { Transaction, Category, VendorRule, Settings, RecurringException } from '../app/types';
 import { storage } from '../app/utils/storage';
 import { isUUID } from '../app/utils/uuidMigration';
+import { ensureSystemCategories } from './systemCategorySync';
 
 // --- Mappers ---
 
@@ -154,6 +155,13 @@ export class SyncService {
         let syncErrors: string[] = [];
 
         try {
+            try {
+                await ensureSystemCategories(userId);
+            } catch (err: any) {
+                console.warn('Sync bootstrap (system categories) failed:', err.message);
+                syncErrors.push(`System Categories: ${err.message}`);
+            }
+
             // ==========================================
             // 1. PULL FROM REMOTE (Isolated)
             // ==========================================

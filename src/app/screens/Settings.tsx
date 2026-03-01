@@ -18,10 +18,12 @@ import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { AuthModal } from '../components/AuthModal';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { CurrencySheet, CURRENCIES } from '../components/settings/CurrencySheet';
 import { ExportSheet } from '../components/settings/ExportSheet';
 import { AccountSheet } from '../components/settings/AccountSheet';
+import { SpreadsheetImportSheet } from '../components/settings/SpreadsheetImportSheet';
+import { downloadSpreadsheetTemplate, parseSpreadsheetFile, SpreadsheetImportSummary, SpreadsheetImportValidationError } from '../utils/spreadsheetImport';
 
 // ─── Reusable Row Component ───────────────────────────────────────────────────
 interface SettingsRowProps {
@@ -29,7 +31,8 @@ interface SettingsRowProps {
   iconBg: string;
   label: string;
   labelClassName?: string;
-  sub?: string;
+  sub?: React.ReactNode;
+  subClassName?: string;
   badge?: string | number;
   right?: React.ReactNode;
   onClick?: () => void;
@@ -37,7 +40,7 @@ interface SettingsRowProps {
   isLast?: boolean;
 }
 
-function SettingsRow({ icon, iconBg, label, labelClassName, sub, badge, right, onClick, showChevron = true, isLast = false }: SettingsRowProps) {
+function SettingsRow({ icon, iconBg, label, labelClassName, sub, subClassName, badge, right, onClick, showChevron = true, isLast = false }: SettingsRowProps) {
   return (
     <>
       <button
@@ -55,7 +58,7 @@ function SettingsRow({ icon, iconBg, label, labelClassName, sub, badge, right, o
         {/* Label + Sub */}
         <div className="flex-1 min-w-0">
           <p className={`text-[15px] font-medium ${labelClassName || 'text-gray-900'}`}>{label}</p>
-          {sub && <p className="text-xs text-gray-500 truncate">{sub}</p>}
+          {sub && <p className={`text-xs text-gray-500 ${subClassName || ''}`}>{sub}</p>}
         </div>
 
         {/* Right side */}
@@ -113,6 +116,12 @@ export function Settings() {
   const [currencySheetOpen, setCurrencySheetOpen] = useState(false);
   const [exportSheetOpen, setExportSheetOpen] = useState(false);
   const [accountSheetOpen, setAccountSheetOpen] = useState(false);
+  const [spreadsheetImportOpen, setSpreadsheetImportOpen] = useState(false);
+  const [isImportingSpreadsheet, setIsImportingSpreadsheet] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [importStatusText, setImportStatusText] = useState('Preparing import');
+  const [importSummary, setImportSummary] = useState<SpreadsheetImportSummary | null>(null);
+  const jsonInputRef = useRef<HTMLInputElement>(null);
   const {
     settings,
     updateSettings,
@@ -120,6 +129,7 @@ export function Settings() {
     categories,
     exportBackup,
     importBackup,
+    importSpreadsheet,
     clearAllData,
     buildCalendarPayload,
   } = useExpense();
@@ -183,6 +193,60 @@ export function Settings() {
     } catch (error) {
       console.error('CSV export failed:', error);
       toast.error('Failed to export CSV');
+    }
+  };
+
+  const handleJSONImport = async (file: File) => {
+    try {
+      const content = await file.text();
+      await importBackup(content);
+    } finally {
+      if (jsonInputRef.current) {
+        jsonInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      await downloadSpreadsheetTemplate();
+      toast.success('Excel template downloaded');
+    } catch (error) {
+      console.error('Template download failed:', error);
+      toast.error('Failed to generate the Excel template');
+    }
+  };
+
+  const handleSpreadsheetImport = async (file: File) => {
+    setImportSummary(null);
+    setIsImportingSpreadsheet(true);
+    setImportProgress(10);
+    setImportStatusText('Validating spreadsheet');
+
+    try {
+      const parsed = await parseSpreadsheetFile(file);
+      setImportProgress(25);
+      setImportStatusText('Preparing records');
+
+      const summary = await importSpreadsheet(parsed, (message, percent) => {
+        setImportStatusText(message);
+        setImportProgress(percent);
+      });
+
+      setImportSummary(summary);
+      toast.success(`Imported ${summary.expenses} expenses, ${summary.categories} categories, ${summary.recurring} recurring items`);
+    } catch (error) {
+      console.error('Spreadsheet import failed:', error);
+      if (error instanceof SpreadsheetImportValidationError) {
+        toast.error(error.message, { duration: 6000 });
+      } else if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error('Failed to import spreadsheet');
+      }
+    } finally {
+      setIsImportingSpreadsheet(false);
+      setImportProgress(0);
     }
   };
 
@@ -473,35 +537,53 @@ export function Settings() {
                 sub="Download your expenses as CSV or JSON"
                 onClick={() => setExportSheetOpen(true)}
               />
-              {/* Import Data */}
-              <div className="relative">
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    const reader = new FileReader();
-                    reader.onload = async (event) => {
-                      const content = event.target?.result;
-                      if (typeof content === 'string') {
-                        await importBackup(content);
-                      }
-                      if (e.target) e.target.value = '';
-                    };
-                    reader.readAsText(file);
-                  }}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                />
-                <SettingsRow
-                  icon="📥"
-                  iconBg="#F0FDF4"
-                  label="Import Data"
-                  sub="Restore from a backup file"
-                  onClick={() => { }}
-                  isLast
-                />
-              </div>
+              <input
+                ref={jsonInputRef}
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) {
+                    return;
+                  }
+
+                  void handleJSONImport(file);
+                }}
+              />
+              <SettingsRow
+                icon="🧩"
+                iconBg="#EFF6FF"
+                label="Import JSON (Backup)"
+                sub={
+                  <>
+                    Use this option to restore a backup exported from CalendarSpent.
+                    <br />
+                    This file must match the app&apos;s internal backup structure.
+                  </>
+                }
+                subClassName="mt-1 leading-5 pr-4"
+                onClick={() => jsonInputRef.current?.click()}
+                showChevron={false}
+              />
+              <SettingsRow
+                icon="📥"
+                iconBg="#F0FDF4"
+                label="Import CSV / Excel"
+                sub={
+                  <>
+                    Use this option to import data from a spreadsheet.
+                    <br />
+                    Download the template, follow the instructions, then upload the file.
+                  </>
+                }
+                subClassName="mt-1 leading-5 pr-4"
+                onClick={() => {
+                  setImportSummary(null);
+                  setSpreadsheetImportOpen(true);
+                }}
+                isLast
+              />
             </SectionCard>
           </motion.div>
 
@@ -523,7 +605,7 @@ export function Settings() {
                       iconBg="#FEE2E2"
                       label="Clear Local Data"
                       labelClassName="text-red-600"
-                      sub="Removes cached data on this device only"
+                      sub="Clears expenses, budgets, recurring items, and custom categories while keeping base categories"
                       onClick={() => { }}
                     />
                   </div>
@@ -535,7 +617,7 @@ export function Settings() {
                     </div>
                     <AlertDialogTitle className="text-xl text-center">Delete all local data?</AlertDialogTitle>
                     <AlertDialogDescription className="text-base text-center">
-                      This will delete all cached data on this device. This action cannot be undone.
+                      This will reset your expenses, recurring items, budgets, and custom categories across this device and your synced account. Base categories will stay available.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <div className="flex gap-3 mt-8">
@@ -582,6 +664,16 @@ export function Settings() {
         onOpenChange={setExportSheetOpen}
         onExportJSON={exportBackup}
         onExportCSV={exportCSV}
+      />
+      <SpreadsheetImportSheet
+        open={spreadsheetImportOpen}
+        onOpenChange={setSpreadsheetImportOpen}
+        onImportFile={handleSpreadsheetImport}
+        onDownloadTemplate={handleDownloadTemplate}
+        isImporting={isImportingSpreadsheet}
+        progress={importProgress}
+        statusText={importStatusText}
+        summary={importSummary}
       />
     </div>
   );

@@ -5,9 +5,11 @@ export interface Transaction {
   category: string;
   date: string; // ISO date string
   note?: string;
+  currency?: string;
   photoUrl?: string;
   isRecurring?: boolean;
-  recurrenceType?: 'weekly' | 'monthly';
+  recurrenceType?: 'daily' | 'weekly' | 'monthly' | 'yearly';
+  recurringKey?: string;
   endDate?: string; // Optional end date for recurring transactions
   isVirtual?: boolean; // For generated occurrences
   isActive?: boolean; // For recurring rules toggle
@@ -60,6 +62,7 @@ export interface Settings {
   lastSyncError?: string; // Message documenting why sync failed
   includeRecurringInReports?: boolean; // Persisted toggle state for Reports screen
   currency?: string; // Selected currency code (CAD, USD, EUR, GBP, AUD)
+  disableDemoData?: boolean; // Prevent demo data from being re-seeded after a reset
 }
 
 export interface GoogleCalendarStatus {
