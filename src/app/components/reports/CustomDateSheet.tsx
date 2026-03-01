@@ -62,88 +62,90 @@ export function CustomDateSheet({ isOpen, onClose, onApply, initialStart, initia
                         onClick={onClose}
                         className="fixed inset-0 bg-black/40 z-50 backdrop-blur-sm"
                     />
-                    <motion.div
-                        initial={{ y: '100%' }}
-                        animate={{ y: 0 }}
-                        exit={{ y: '100%' }}
-                        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                        className="fixed bottom-0 left-0 right-0 bg-white rounded-t-[24px] z-50 p-6 font-dm-sans shadow-2xl safe-area-bottom"
-                    >
-                        <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-xl font-bold text-gray-900">Custom Range</h2>
+                    <div className="fixed inset-x-0 bottom-0 z-50 flex justify-center md:inset-0 md:items-center md:p-4 pointer-events-none">
+                        <motion.div
+                            initial={{ y: '100%' }}
+                            animate={{ y: 0 }}
+                            exit={{ y: '100%' }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                            className="pointer-events-auto w-full bg-white rounded-t-[24px] p-6 font-dm-sans shadow-2xl safe-area-bottom md:max-w-[44rem] md:rounded-[24px] md:border md:border-[#E2E8F0]"
+                        >
+                            <div className="flex justify-between items-center mb-6">
+                                <h2 className="text-xl font-bold text-gray-900">Custom Range</h2>
+                                <button
+                                    onClick={onClose}
+                                    className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-none -mx-6 px-6">
+                                <button
+                                    onClick={() => applyPreset(7)}
+                                    className="flex-none px-4 py-2 bg-gray-100 rounded-full text-sm font-bold text-gray-700 active:bg-gray-200"
+                                >
+                                    Last 7 days
+                                </button>
+                                <button
+                                    onClick={() => applyPreset(30)}
+                                    className="flex-none px-4 py-2 bg-gray-100 rounded-full text-sm font-bold text-gray-700 active:bg-gray-200"
+                                >
+                                    Last 30 days
+                                </button>
+                                <button
+                                    onClick={() => applyPreset(0, 3)}
+                                    className="flex-none px-4 py-2 bg-gray-100 rounded-full text-sm font-bold text-gray-700 active:bg-gray-200"
+                                >
+                                    Last 3 months
+                                </button>
+                            </div>
+
+                            <div className="flex gap-4 mb-8">
+                                <div className="flex-1">
+                                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
+                                        Start Date
+                                    </label>
+                                    <div className="relative">
+                                        <input
+                                            type="date"
+                                            value={startDate}
+                                            onChange={(e) => setStartDate(e.target.value)}
+                                            className="w-full h-12 bg-gray-50 border border-gray-200 rounded-xl px-4 text-sm font-bold text-gray-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex-1">
+                                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
+                                        End Date
+                                    </label>
+                                    <div className="relative">
+                                        <input
+                                            type="date"
+                                            value={endDate}
+                                            onChange={(e) => setEndDate(e.target.value)}
+                                            className="w-full h-12 bg-gray-50 border border-gray-200 rounded-xl px-4 text-sm font-bold text-gray-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={handleApply}
+                                disabled={!startDate || !endDate}
+                                className="w-full h-[52px] bg-blue-600 text-white rounded-[16px] font-bold text-lg active:opacity-90 transition-opacity disabled:opacity-50 disabled:bg-gray-300"
+                            >
+                                Apply Range
+                            </button>
+
                             <button
                                 onClick={onClose}
-                                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200"
+                                className="w-full py-4 text-sm font-bold text-gray-400 active:text-gray-600 mt-2"
                             >
-                                <X className="w-5 h-5" />
+                                Cancel
                             </button>
-                        </div>
-
-                        <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-none -mx-6 px-6">
-                            <button
-                                onClick={() => applyPreset(7)}
-                                className="flex-none px-4 py-2 bg-gray-100 rounded-full text-sm font-bold text-gray-700 active:bg-gray-200"
-                            >
-                                Last 7 days
-                            </button>
-                            <button
-                                onClick={() => applyPreset(30)}
-                                className="flex-none px-4 py-2 bg-gray-100 rounded-full text-sm font-bold text-gray-700 active:bg-gray-200"
-                            >
-                                Last 30 days
-                            </button>
-                            <button
-                                onClick={() => applyPreset(0, 3)}
-                                className="flex-none px-4 py-2 bg-gray-100 rounded-full text-sm font-bold text-gray-700 active:bg-gray-200"
-                            >
-                                Last 3 months
-                            </button>
-                        </div>
-
-                        <div className="flex gap-4 mb-8">
-                            <div className="flex-1">
-                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
-                                    Start Date
-                                </label>
-                                <div className="relative">
-                                    <input
-                                        type="date"
-                                        value={startDate}
-                                        onChange={(e) => setStartDate(e.target.value)}
-                                        className="w-full h-12 bg-gray-50 border border-gray-200 rounded-xl px-4 text-sm font-bold text-gray-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
-                                    />
-                                </div>
-                            </div>
-                            <div className="flex-1">
-                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
-                                    End Date
-                                </label>
-                                <div className="relative">
-                                    <input
-                                        type="date"
-                                        value={endDate}
-                                        onChange={(e) => setEndDate(e.target.value)}
-                                        className="w-full h-12 bg-gray-50 border border-gray-200 rounded-xl px-4 text-sm font-bold text-gray-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        <button
-                            onClick={handleApply}
-                            disabled={!startDate || !endDate}
-                            className="w-full h-[52px] bg-blue-600 text-white rounded-[16px] font-bold text-lg active:opacity-90 transition-opacity disabled:opacity-50 disabled:bg-gray-300"
-                        >
-                            Apply Range
-                        </button>
-
-                        <button
-                            onClick={onClose}
-                            className="w-full py-4 text-sm font-bold text-gray-400 active:text-gray-600 mt-2"
-                        >
-                            Cancel
-                        </button>
-                    </motion.div>
+                        </motion.div>
+                    </div>
                 </>
             )}
         </AnimatePresence>

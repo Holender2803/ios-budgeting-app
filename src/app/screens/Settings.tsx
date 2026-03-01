@@ -251,17 +251,17 @@ export function Settings() {
   };
 
   return (
-    <div className="h-[100dvh] flex flex-col bg-gray-50 overflow-hidden">
+    <div className="app-screen-with-nav h-[100dvh] flex flex-col bg-gray-50 overflow-hidden">
       {/* Header */}
       <div className="flex-none bg-white border-b border-gray-200">
-        <div className="max-w-lg mx-auto px-4 py-6">
+        <div className="app-shell-narrow py-6">
           <h1 className="text-2xl font-semibold text-gray-900">Settings</h1>
         </div>
       </div>
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto min-h-0">
-        <div className="max-w-lg mx-auto px-4 py-6 space-y-6 pb-10">
+        <div className="app-shell-narrow py-6 space-y-6 pb-10">
 
           {/* ═══ PROFILE CARD ═══ */}
           <motion.div
@@ -648,7 +648,9 @@ export function Settings() {
         </div>
       </div>
 
-      <BottomNav />
+      <div className="lg:h-0">
+        <BottomNav />
+      </div>
 
       {/* Sheets & Modals */}
       <AuthModal open={authModalOpen} onOpenChange={setAuthModalOpen} />

@@ -4,10 +4,18 @@
 
 /* iOS-style optimizations */
 @layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
   body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overscroll-behavior: none;
+    overflow-x: hidden;
+    background: #f1f5f9;
   }
 
   /* Safe area support for iOS */
@@ -25,5 +33,73 @@
   /* Smooth scrolling */
   html {
     scroll-behavior: smooth;
+  }
+}
+
+@layer components {
+  .app-shell-narrow {
+    width: min(100%, 44rem);
+    margin-inline: auto;
+    padding-inline: 1rem;
+  }
+
+  .app-shell-wide {
+    width: min(100%, 72rem);
+    margin-inline: auto;
+    padding-inline: 1rem;
+  }
+
+  .app-drawer-frame {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 50;
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    outline: none;
+    pointer-events: none;
+  }
+
+  .app-drawer-panel {
+    pointer-events: auto;
+    width: min(100%, 44rem);
+    background: white;
+    border-radius: 1rem 1rem 0 0;
+    max-height: min(88vh, 56rem);
+    overflow: hidden;
+  }
+
+  @media (min-width: 640px) {
+    .app-shell-narrow,
+    .app-shell-wide {
+      padding-inline: 1.5rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .app-shell-narrow,
+    .app-shell-wide {
+      padding-inline: 2rem;
+    }
+
+    .app-screen-with-nav {
+      padding-left: 8rem;
+    }
+  }
+
+  @media (min-width: 768px) {
+    .app-drawer-frame {
+      inset: 0;
+      padding: 1rem;
+      align-items: center;
+    }
+
+    .app-drawer-panel {
+      border-radius: 1rem;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18);
+      max-height: min(85vh, 48rem);
+    }
   }
 }

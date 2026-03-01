@@ -165,7 +165,7 @@ export function TransactionEdit() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-lg mx-auto px-4 py-4">
+        <div className="app-shell-narrow py-4">
           <div className="flex items-center justify-between">
             <button
               onClick={() => navigate(-1)}
@@ -192,7 +192,7 @@ export function TransactionEdit() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="max-w-lg mx-auto px-4 py-6 space-y-6"
+        className="app-shell-narrow py-6 space-y-6 md:py-8"
       >
         <input
           ref={cameraInputRef}
@@ -233,21 +233,35 @@ export function TransactionEdit() {
           />
         </div>
 
-        {/* Amount */}
-        <div className="space-y-2">
-          <Label htmlFor="amount">Amount</Label>
-          <div className="relative">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-lg">
-              $
-            </span>
+        <div className="grid gap-6 md:grid-cols-2 md:items-start">
+          {/* Amount */}
+          <div className="space-y-2">
+            <Label htmlFor="amount">Amount</Label>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-lg">
+                $
+              </span>
+              <Input
+                id="amount"
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="h-14 rounded-2xl text-base pl-8 shadow-sm border-gray-100 focus:border-blue-500 transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Date */}
+          <div className="space-y-2">
+            <Label htmlFor="date">Date</Label>
             <Input
-              id="amount"
-              type="number"
-              step="0.01"
-              placeholder="0.00"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="h-14 rounded-2xl text-base pl-8 shadow-sm border-gray-100 focus:border-blue-500 transition-all"
+              id="date"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="h-14 rounded-2xl text-base shadow-sm border-gray-100 focus:border-blue-500 transition-all"
             />
           </div>
         </div>
@@ -259,18 +273,6 @@ export function TransactionEdit() {
             selectedCategoryId={categoryId}
             onSelect={handleCategorySelect}
             vendor={vendor}
-          />
-        </div>
-
-        {/* Date */}
-        <div className="space-y-2">
-          <Label htmlFor="date">Date</Label>
-          <Input
-            id="date"
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="h-14 rounded-2xl text-base shadow-sm border-gray-100 focus:border-blue-500 transition-all"
           />
         </div>
 
@@ -295,7 +297,7 @@ export function TransactionEdit() {
           </div>
 
           {isRecurring && (
-            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100">
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100 md:grid-cols-4">
               {RECURRENCE_OPTIONS.map((option) => (
                 <button
                   key={option}

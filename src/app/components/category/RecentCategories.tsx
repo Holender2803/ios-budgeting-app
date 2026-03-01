@@ -4,6 +4,7 @@ import { MoreHorizontal } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useExpense } from '../../context/ExpenseContext';
 import { storage } from '../../utils/storage';
+import { DEFAULT_RECENT_CATEGORY_IDS } from '../../constants/systemCategories';
 
 interface RecentCategoriesProps {
     selectedCategoryId: string;
@@ -60,8 +61,7 @@ export function RecentCategories({
 
         // If we have fewer than 5, fill with sensible defaults
         if (ids.length < RECENT_LIMIT) {
-            const defaults = ['cat-food', 'cat-groceries', 'cat-shopping', 'cat-transport', 'cat-coffee'];
-            const fill = defaults.filter(d => !ids.includes(d) && d !== suggestedId);
+            const fill = DEFAULT_RECENT_CATEGORY_IDS.filter(d => !ids.includes(d) && d !== suggestedId);
             ids = [...ids, ...fill].slice(0, RECENT_LIMIT);
         }
 

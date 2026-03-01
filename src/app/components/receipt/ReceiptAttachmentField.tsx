@@ -52,7 +52,7 @@ export function ReceiptAttachmentField({
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={onTakePhoto}
@@ -75,7 +75,7 @@ export function ReceiptAttachmentField({
           type="button"
           onClick={() => photoUrl && setPreviewOpen(true)}
           disabled={!photoUrl}
-          className={`w-full h-44 rounded-2xl border border-gray-200 bg-gray-50 overflow-hidden relative transition-colors ${
+          className={`w-full h-44 rounded-2xl border border-gray-200 bg-gray-50 overflow-hidden relative transition-colors sm:h-52 ${
             photoUrl ? 'cursor-zoom-in hover:border-gray-300' : 'cursor-default'
           }`}
         >
@@ -96,16 +96,16 @@ export function ReceiptAttachmentField({
       </div>
 
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="w-[calc(100%-2rem)] max-w-3xl rounded-2xl p-4 sm:p-6">
+        <DialogContent className="w-[calc(100%-2rem)] max-w-4xl rounded-2xl p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>Receipt</DialogTitle>
             <DialogDescription>View the full image or download it back to your device.</DialogDescription>
           </DialogHeader>
 
           {photoUrl && (
-            <div className="space-y-4">
-              <div className="w-full max-h-[70vh] rounded-2xl overflow-hidden bg-gray-50 border border-gray-200 flex items-center justify-center">
-                <img src={photoUrl} alt="Full receipt" className="max-w-full max-h-[70vh] object-contain" />
+            <div className="space-y-4 overflow-hidden">
+              <div className="w-full max-h-[75vh] rounded-2xl overflow-hidden bg-gray-50 border border-gray-200 flex items-center justify-center">
+                <img src={photoUrl} alt="Full receipt" className="max-w-full max-h-[75vh] object-contain" />
               </div>
 
               <div className="flex justify-end">
