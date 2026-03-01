@@ -1,13 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ChevronLeft, Trash2, Repeat } from 'lucide-react';
+import { ChevronLeft, Trash2 } from 'lucide-react';
 import { useExpense } from '../context/ExpenseContext';
 import { CategoryPicker } from '../components/category/CategoryPicker';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
+import { ReceiptAttachmentField } from '../components/receipt/ReceiptAttachmentField';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
+import { readReceiptFileAsDataUrl, ReceiptFileValidationError, validateReceiptFile } from '../utils/receiptExtractionService';
 
 const RECURRENCE_OPTIONS = ['daily', 'weekly', 'monthly', 'yearly'] as const;
 
@@ -19,7 +21,6 @@ export function TransactionEdit() {
     updateTransaction,
     updateRecurringRule,
     deleteTransaction,
-    categories,
     addVendorRule,
     isHydrated
   } = useExpense();
@@ -32,11 +33,15 @@ export function TransactionEdit() {
     return false;
   });
 
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+
   const [vendor, setVendor] = useState(transaction?.vendor || '');
   const [amount, setAmount] = useState(transaction?.amount.toString() || '');
   const [categoryId, setCategoryId] = useState(transaction?.category || '');
   const [date, setDate] = useState(transaction?.date || '');
   const [note, setNote] = useState(transaction?.note || '');
+  const [photoUrl, setPhotoUrl] = useState(transaction?.photoUrl || '');
   const [isRecurring, setIsRecurring] = useState(transaction?.isRecurring || false);
   const [recurrenceType, setRecurrenceType] = useState<typeof RECURRENCE_OPTIONS[number]>(transaction?.recurrenceType || 'monthly');
   const [endDate, setEndDate] = useState(transaction?.endDate || '');
@@ -50,6 +55,7 @@ export function TransactionEdit() {
       setCategoryId(transaction.category);
       setDate(transaction.date);
       setNote(transaction.note || '');
+      setPhotoUrl(transaction.photoUrl || '');
       setIsRecurring(transaction.isRecurring || false);
       setRecurrenceType(transaction.recurrenceType || 'monthly');
       setEndDate(transaction.endDate || '');
@@ -103,6 +109,21 @@ export function TransactionEdit() {
     }
   };
 
+  const handleReceiptSelected = async (file: File) => {
+    try {
+      validateReceiptFile(file);
+    } catch (error) {
+      if (error instanceof ReceiptFileValidationError) {
+        toast.error(error.message);
+      }
+      return;
+    }
+
+    const nextPhotoUrl = await readReceiptFileAsDataUrl(file);
+    setPhotoUrl(nextPhotoUrl);
+    toast.success('Receipt attached');
+  };
+
   const handleSave = () => {
     if (!vendor || !amount || !categoryId || !id) {
       return;
@@ -116,6 +137,7 @@ export function TransactionEdit() {
       category: categoryId,
       date,
       note: note || undefined,
+      photoUrl: photoUrl || undefined,
       isRecurring,
       recurrenceType: isRecurring ? recurrenceType : undefined,
       endDate: isRecurring && endDate ? endDate : undefined,
@@ -172,12 +194,31 @@ export function TransactionEdit() {
         animate={{ opacity: 1, y: 0 }}
         className="max-w-lg mx-auto px-4 py-6 space-y-6"
       >
-        {/* Photo Preview */}
-        {transaction.photoUrl && (
-          <div className="w-full max-w-xs mx-auto rounded-2xl overflow-hidden shadow-lg">
-            <img src={transaction.photoUrl} alt="Receipt" className="w-full h-auto" />
-          </div>
-        )}
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            void handleReceiptSelected(file);
+            event.target.value = '';
+          }}
+        />
+        <input
+          ref={galleryInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            void handleReceiptSelected(file);
+            event.target.value = '';
+          }}
+        />
 
         {/* Vendor */}
         <div className="space-y-2">
@@ -295,6 +336,12 @@ export function TransactionEdit() {
             </div>
           )}
         </div>
+
+        <ReceiptAttachmentField
+          photoUrl={photoUrl}
+          onTakePhoto={() => cameraInputRef.current?.click()}
+          onUpload={() => galleryInputRef.current?.click()}
+        />
 
         {/* Note */}
         <div className="space-y-2">

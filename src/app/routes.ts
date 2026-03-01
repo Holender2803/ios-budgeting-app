@@ -1,8 +1,8 @@
-import { createBrowserRouter } from 'react-router';
+import React from 'react';
+import { createBrowserRouter, Navigate } from 'react-router';
 import { Home } from './screens/Home';
 import { DayDetail } from './screens/DayDetail';
 import { AddExpense } from './screens/AddExpense';
-import { ReceiptUpload } from './screens/ReceiptUpload';
 import { Categories } from './screens/Categories';
 import { Settings } from './screens/Settings';
 import { Reports } from './screens/Reports';
@@ -24,7 +24,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/receipt-upload',
-    Component: ReceiptUpload,
+    element: React.createElement(Navigate, { to: '/add', replace: true }),
   },
   {
     path: '/categories',
