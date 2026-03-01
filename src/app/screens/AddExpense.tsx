@@ -1,29 +1,34 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router';
-import { ChevronLeft, Camera } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import { useExpense } from '../context/ExpenseContext';
 import { useVendorSuggestions } from '../hooks/useVendorSuggestions';
 import { CategoryPicker } from '../components/category/CategoryPicker';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
+import { ReceiptAttachmentField } from '../components/receipt/ReceiptAttachmentField';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
+import { readReceiptFileAsDataUrl, ReceiptFileValidationError, validateReceiptFile } from '../utils/receiptExtractionService';
 
 const RECURRENCE_OPTIONS = ['daily', 'weekly', 'monthly', 'yearly'] as const;
 
 export function AddExpense() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { transactions, addTransaction, categories, addVendorRule, getSuggestedCategory, selectedDate } = useExpense();
+  const { addTransaction, categories, addVendorRule, getSuggestedCategory, selectedDate } = useExpense();
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const [amount, setAmount] = useState('');
   const [vendor, setVendor] = useState(location.state?.vendor || '');
   const [categoryId, setCategoryId] = useState(categories[0]?.id || '');
   const [date, setDate] = useState(selectedDate);
   const [note, setNote] = useState('');
+  const [photoUrl, setPhotoUrl] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState<typeof RECURRENCE_OPTIONS[number]>('monthly');
   const [endDate, setEndDate] = useState('');
@@ -75,6 +80,21 @@ export function AddExpense() {
     }
   };
 
+  const handleReceiptSelected = async (file: File) => {
+    try {
+      validateReceiptFile(file);
+    } catch (error) {
+      if (error instanceof ReceiptFileValidationError) {
+        toast.error(error.message);
+      }
+      return;
+    }
+
+    const nextPhotoUrl = await readReceiptFileAsDataUrl(file);
+    setPhotoUrl(nextPhotoUrl);
+    toast.success('Receipt attached');
+  };
+
   const handleSave = () => {
     if (!vendor || !amount || !categoryId) {
       return;
@@ -86,6 +106,7 @@ export function AddExpense() {
       category: categoryId,
       date,
       note: note || undefined,
+      photoUrl: photoUrl || undefined,
       isRecurring,
       recurrenceType: isRecurring ? recurrenceType : undefined,
       endDate: isRecurring && endDate ? endDate : undefined,
@@ -117,12 +138,7 @@ export function AddExpense() {
 
             <h1 className="text-xl font-semibold text-gray-900">Add Expense</h1>
 
-            <button
-              onClick={() => navigate('/receipt-upload')}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-            >
-              <Camera className="w-6 h-6 text-gray-600" />
-            </button>
+            <div className="w-10" />
           </div>
         </div>
       </div>
@@ -133,6 +149,32 @@ export function AddExpense() {
         animate={{ opacity: 1, y: 0 }}
         className="max-w-lg mx-auto px-4 py-6 space-y-6"
       >
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            void handleReceiptSelected(file);
+            event.target.value = '';
+          }}
+        />
+        <input
+          ref={galleryInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            void handleReceiptSelected(file);
+            event.target.value = '';
+          }}
+        />
+
         {/* Vendor */}
         <div className="space-y-2 relative" ref={dropdownRef}>
           <Label htmlFor="vendor">Vendor</Label>
@@ -277,6 +319,12 @@ export function AddExpense() {
             </div>
           )}
         </div>
+
+        <ReceiptAttachmentField
+          photoUrl={photoUrl}
+          onTakePhoto={() => cameraInputRef.current?.click()}
+          onUpload={() => galleryInputRef.current?.click()}
+        />
 
         {/* Note */}
         <div className="space-y-2">
