@@ -131,8 +131,8 @@ export function BudgetCategorySheet({
         <Drawer.Root open={open} onOpenChange={onOpenChange}>
             <Drawer.Portal>
                 <Drawer.Overlay className="fixed inset-0 bg-black/40 z-40 backdrop-blur-sm" />
-                <Drawer.Content className="fixed bottom-0 left-0 right-0 z-50 outline-none">
-                    <div className="bg-white rounded-t-[24px] max-w-lg mx-auto w-full flex flex-col font-dm-sans max-h-[85vh]">
+                <Drawer.Content className="app-drawer-frame">
+                    <div className="app-drawer-panel flex flex-col font-dm-sans max-h-[85vh] rounded-t-[24px] md:rounded-[24px]">
 
                         {/* Header */}
                         <div className="flex-none p-6 pb-4 border-b border-gray-100 flex items-start justify-between bg-white/80 backdrop-blur-md sticky top-0 rounded-t-[24px] z-10">

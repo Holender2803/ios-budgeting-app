@@ -144,10 +144,10 @@ export function Home() {
   }, [selectedIds, processedTransactions]);
 
   return (
-    <div className="h-[100dvh] flex flex-col bg-gray-50 overflow-hidden relative">
+    <div className="app-screen-with-nav h-[100dvh] flex flex-col bg-gray-50 overflow-hidden relative">
       {/* Row 1: Frozen Header */}
       <div className="flex-none bg-white border-b border-gray-100 z-30 shadow-sm">
-        <div className="max-w-lg mx-auto px-6 pt-8 pb-6">
+        <div className="app-shell-wide pt-8 pb-6">
           {/* Segmented Control */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
             <div className={`inline-flex bg-gray-100 rounded-lg p-1 mx-auto sm:mx-0 transition-opacity ${isSelectionMode ? 'opacity-50 pointer-events-none' : ''}`}>
@@ -294,7 +294,7 @@ export function Home() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.15 }}
-          className="max-w-lg mx-auto pb-32"
+          className="app-shell-wide pb-32"
         >
           {isSelectionMode && timeView !== 'daily' && (
             <div className="px-6 py-4 space-y-4">
@@ -322,7 +322,7 @@ export function Home() {
           )}
 
           {!isSelectionMode && timeView === 'monthly' && (
-            <div className="bg-white">
+            <div className="bg-white lg:rounded-[24px] lg:border lg:border-[#E2E8F0] lg:shadow-sm lg:overflow-hidden">
               <MonthlyCalendar
                 currentDate={currentDate}
                 onDayClick={handleDayClick}
@@ -349,7 +349,7 @@ export function Home() {
       </div>
 
       {/* Row 3: Frozen Footer (Filter + Nav) */}
-      <div className={`flex-none bg-white border-t border-gray-100 z-20 transition-transform ${isSelectionMode && selectedIds.length > 0 ? 'translate-y-full' : ''}`}>
+      <div className={`flex-none bg-white border-t border-gray-100 z-20 transition-transform lg:bg-transparent lg:border-t-0 ${isSelectionMode && selectedIds.length > 0 ? 'translate-y-full' : ''}`}>
         <CategoryFilterBar transactions={rangeTransactionsUnfiltered} />
         <BottomNav />
       </div>

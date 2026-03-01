@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Transaction, Category, VendorRule, Settings, RecurringException } from '../types';
 import { generateDemoData } from '../utils/generateDemoData';
 import { format, addDays, startOfToday, endOfYear, addYears, isBefore, isAfter, parseISO, addWeeks, addMonths } from 'date-fns';
@@ -10,6 +10,7 @@ import { useAuth } from './AuthContext';
 import { LocalTransaction } from '../../lib/calendarService';
 import { ParsedSpreadsheetImport, SpreadsheetImportSummary } from '../utils/spreadsheetImport';
 import { SYSTEM_CATEGORIES, isSystemCategoryId } from '../constants/systemCategories';
+import { findBestVendorCategoryMatch, PREMADE_VENDOR_RULES } from '../constants/vendorIntelligence';
 import { ensureSystemCategories } from '../../lib/systemCategorySync';
 
 interface ExpenseContextType {
@@ -70,30 +71,6 @@ export const CANONICAL_GROUPS = [
   'Other'
 ] as const;
 
-export const DEFAULT_VENDOR_RULES: Omit<VendorRule, 'id' | 'source' | 'createdAt'>[] = [
-  { vendorContains: 'bjj', categoryId: 'cat-fitness' },
-  { vendorContains: 'shoppers', categoryId: 'cat-personal' },
-  { vendorContains: 'tim hortons', categoryId: 'cat-coffee' },
-  { vendorContains: 'starbucks', categoryId: 'cat-coffee' },
-  { vendorContains: 'costco', categoryId: 'cat-groceries' },
-  { vendorContains: 'freshco', categoryId: 'cat-groceries' },
-  { vendorContains: 'loblaws', categoryId: 'cat-groceries' },
-  { vendorContains: 'farm boy', categoryId: 'cat-groceries' },
-  { vendorContains: 'uber eats', categoryId: 'cat-food' },
-  { vendorContains: 'uber', categoryId: 'cat-transport' },
-  { vendorContains: 'ttc', categoryId: 'cat-transport' },
-  { vendorContains: 'presto', categoryId: 'cat-transport' },
-  { vendorContains: 'ramen', categoryId: 'cat-food' },
-  { vendorContains: 'zuzu', categoryId: 'cat-food' },
-  { vendorContains: 'library pizza', categoryId: 'cat-food' },
-  { vendorContains: 'pizza', categoryId: 'cat-food' },
-  { vendorContains: 'amazon', categoryId: 'cat-online-shopping' },
-  { vendorContains: 'aliexpress', categoryId: 'cat-online-shopping' },
-  { vendorContains: 'ebay', categoryId: 'cat-online-shopping' },
-  { vendorContains: 'shein', categoryId: 'cat-online-shopping' },
-  { vendorContains: 'iherb', categoryId: 'cat-online-shopping' },
-];
-
 export type CanonicalGroup = typeof CANONICAL_GROUPS[number];
 
 // --- Helpers & Migration ---
@@ -116,38 +93,19 @@ export const getCategoryError = (name: string, categories: Category[], id?: stri
 export const suggestCategoryForVendor = (
   vendorName: string,
   userRules: VendorRule[],
-  defaultRules: typeof DEFAULT_VENDOR_RULES = DEFAULT_VENDOR_RULES
-): { categoryId: string | null; matchedRule?: any } => {
+  _defaultRules: typeof PREMADE_VENDOR_RULES = PREMADE_VENDOR_RULES,
+): { categoryId: string | null; matchedRule?: { vendor: string } } => {
   if (!vendorName) return { categoryId: null };
 
-  const normalizedInput = normalizeLabel(vendorName);
+  const { categoryId, matchedVendor } = findBestVendorCategoryMatch(vendorName, userRules);
+  if (!categoryId) {
+    return { categoryId: null };
+  }
 
-  // Helper matching function
-  const findMatch = (rules: any[]) => {
-    const matches = rules.filter(r => {
-      const normalizedPattern = normalizeLabel(r.vendorContains || (r as any).vendor || '');
-      return normalizedInput.includes(normalizedPattern);
-    });
-
-    if (matches.length === 0) return null;
-
-    // Tie broken by longest match (most specific)
-    return matches.sort((a, b) => {
-      const aLen = normalizeLabel(a.vendorContains || (a as any).vendor || '').length;
-      const bLen = normalizeLabel(b.vendorContains || (b as any).vendor || '').length;
-      return bLen - aLen;
-    })[0];
+  return {
+    categoryId,
+    matchedRule: matchedVendor ? { vendor: matchedVendor } : undefined,
   };
-
-  // 1. User rules first
-  const userMatch = findMatch(userRules);
-  if (userMatch) return { categoryId: userMatch.categoryId, matchedRule: userMatch };
-
-  // 2. Default rules second
-  const defaultMatch = findMatch(defaultRules);
-  if (defaultMatch) return { categoryId: defaultMatch.categoryId, matchedRule: defaultMatch };
-
-  return { categoryId: null };
 };
 
 const LEGACY_MAPPING: Record<string, string> = {
@@ -155,7 +113,10 @@ const LEGACY_MAPPING: Record<string, string> = {
   'transportation': 'cat-transport',
   'fees & charges': 'cat-bank', // or cat-taxes
   'bills': 'cat-util',
-  'other': 'cat-shopping',
+  'other': 'cat-uncategorized',
+  'childcare': 'cat-uncategorized',
+  'savings': 'cat-bank',
+  'donations': 'cat-gifts',
 };
 
 const migrateData = (
@@ -225,10 +186,10 @@ const migrateData = (
       changed = true;
       return { ...t, category: idMap[t.category] };
     }
-    // Safety check: if category ID is totally invalid/missing from final list, fallback to cat-other/cat-shopping
+    // Safety check: if category ID is invalid/missing from the final list, fallback to Uncategorized
     if (!finalCategories.some(c => c.id === t.category)) {
       changed = true;
-      return { ...t, category: 'cat-shopping' };
+      return { ...t, category: 'cat-uncategorized' };
     }
     return t;
   });
@@ -242,7 +203,7 @@ const migrateData = (
       rule.categoryId = idMap[r.categoryId];
       ruleChanged = true;
     } else if (!finalCategories.some(c => c.id === r.categoryId)) {
-      rule.categoryId = 'cat-shopping';
+      rule.categoryId = 'cat-uncategorized';
       ruleChanged = true;
     }
 
@@ -335,6 +296,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
   const [includeRecurring, setIncludeRecurringState] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const devVerificationLoggedRef = useRef(false);
 
   const setIncludeRecurring = React.useCallback((value: boolean) => {
     setIncludeRecurringState(value);
@@ -356,9 +318,10 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
         recurringExceptions,
         settings,
         (newTransactions, newCategories, newRules, newExceptions, newSettings) => {
-          setTransactions(newTransactions);
-          setCategories(newCategories);
-          setVendorRules(newRules);
+          const reconciled = migrateData(newCategories, newTransactions, newRules);
+          setTransactions(reconciled.transactions);
+          setCategories(reconciled.categories);
+          setVendorRules(reconciled.vendorRules);
           setRecurringExceptions(newExceptions);
           setSettings(prev => ({ ...prev, ...newSettings }));
         }
@@ -429,7 +392,11 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       // Fix missing defaults
       if (dbCategories.length > 0) {
         const missingDefaults = DEFAULT_CATEGORIES.filter(
-          defCat => !pipelineCategories.some(userCat => userCat.name === defCat.name || userCat.id === defCat.id)
+          defCat => !pipelineCategories.some(
+            userCat =>
+              normalizeLabel(userCat.name) === normalizeLabel(defCat.name) ||
+              userCat.id === defCat.id,
+          )
         );
         const merged = [...pipelineCategories, ...missingDefaults];
         const seenIds = new Set<string>();
@@ -674,6 +641,33 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     };
     sync();
   }, [recurringExceptions, isHydrated]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || !isHydrated || devVerificationLoggedRef.current) return;
+
+    const activeCategories = categories.filter((category) => !category.deletedAt);
+    const resolveCategoryName = (vendor: string) => {
+      const categoryId = suggestCategoryForVendor(vendor, vendorRules).categoryId;
+      return activeCategories.find((category) => category.id === categoryId)?.name ?? null;
+    };
+
+    devVerificationLoggedRef.current = true;
+    console.info('[CalendarSpent][dev-check]', {
+      defaultsExist: DEFAULT_CATEGORIES.every((defaultCategory) =>
+        activeCategories.some(
+          (category) =>
+            category.id === defaultCategory.id ||
+            normalizeLabel(category.name) === normalizeLabel(defaultCategory.name),
+        ),
+      ),
+      vendorCategoryChecks: {
+        'Uber Eats': resolveCategoryName('Uber Eats'),
+        'Fido Mobile': resolveCategoryName('Fido Mobile'),
+        Rent: resolveCategoryName('Rent'),
+        Amazon: resolveCategoryName('Amazon'),
+      },
+    });
+  }, [categories, vendorRules, isHydrated]);
 
   const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
     const newTransaction = {
@@ -1034,11 +1028,16 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       const restoredRules = parsed.vendorRules || [];
       const restoredSettings = parsed.settings || DEFAULT_SETTINGS;
       const restoredExceptions = parsed.recurringExceptions || [];
+      const {
+        categories: reconciledCategories,
+        transactions: reconciledTransactions,
+        vendorRules: reconciledRules,
+      } = migrateData(restoredCategories, restoredTransactions, restoredRules);
 
       // Update state (this will trigger the useEffect syncs to write to DB)
-      setTransactions(restoredTransactions);
-      setCategories(restoredCategories);
-      setVendorRules(restoredRules);
+      setTransactions(reconciledTransactions);
+      setCategories(reconciledCategories);
+      setVendorRules(reconciledRules);
       setSettings(restoredSettings);
       setRecurringExceptions(restoredExceptions);
 

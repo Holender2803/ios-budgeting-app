@@ -83,20 +83,22 @@ export function CategoryFilterBar({ transactions }: CategoryFilterBarProps) {
   return (
     <>
       {/* Compact Filter Control */}
-      <div className="bg-gray-50/50 px-5 py-4 border-t border-gray-100">
-        <button
-          onClick={() => setIsOpen(true)}
-          className="w-full flex items-center justify-between py-2 px-4 bg-white border border-gray-200 rounded-xl hover:border-gray-300 transition-all shadow-sm"
-        >
-          <span className="text-[13px] text-gray-500">
-            Filter: <span className="text-gray-900 font-semibold">{filterLabel}</span>
-          </span>
-          <ChevronDown className="w-4 h-4 text-gray-400" />
-        </button>
+      <div className="bg-gray-50/50 border-t border-gray-100 py-4">
+        <div className="app-shell-wide">
+          <button
+            onClick={() => setIsOpen(true)}
+            className="w-full flex items-center justify-between py-2 px-4 bg-white border border-gray-200 rounded-xl hover:border-gray-300 transition-all shadow-sm"
+          >
+            <span className="text-[13px] text-gray-500">
+              Filter: <span className="text-gray-900 font-semibold">{filterLabel}</span>
+            </span>
+            <ChevronDown className="w-4 h-4 text-gray-400" />
+          </button>
+        </div>
       </div>
 
       <Sheet open={isOpen} onOpenChange={setIsOpen}>
-        <SheetContent side="bottom" className="max-h-[88vh] flex flex-col p-0 rounded-t-[32px] overflow-hidden">
+        <SheetContent side="bottom" className="max-h-[88vh] flex flex-col p-0 rounded-t-[32px] overflow-hidden md:bottom-4 md:left-1/2 md:right-auto md:w-[min(calc(100vw-2rem),44rem)] md:-translate-x-1/2 md:rounded-[24px] md:border md:border-[#E2E8F0] md:shadow-2xl">
           <div className="px-6 pt-6 pb-2">
             <div className="flex items-center justify-between mb-1">
               <SheetTitle className="text-xl font-bold">Filter Categories</SheetTitle>

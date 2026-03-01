@@ -70,109 +70,126 @@ export function Reports() {
     };
 
     return (
-        <div className="h-[100dvh] flex flex-col bg-[#F1F5F9] overflow-hidden relative font-dm-sans">
+        <div className="app-screen-with-nav h-[100dvh] flex flex-col bg-[#F1F5F9] overflow-hidden relative font-dm-sans">
             {/* Frozen Header */}
-            <div className="flex-none bg-white border-b border-gray-100 z-30 shadow-sm relative pt-12 pb-4 px-6 rounded-b-[24px]">
-                <h1 className="text-2xl font-bold text-gray-900 mb-6">Reports</h1>
+            <div className="flex-none bg-white border-b border-gray-100 z-30 shadow-sm relative rounded-b-[24px]">
+                <div className="app-shell-wide pt-12 pb-4">
+                    <h1 className="text-2xl font-bold text-gray-900 mb-6">Reports</h1>
 
-                <PeriodSelector value={timePeriod} onChange={handlePeriodChange} />
+                    <PeriodSelector value={timePeriod} onChange={handlePeriodChange} />
 
-                {timePeriod === 'Custom' && customRange && (
-                    <div className="mt-3 text-center">
-                        <span className="inline-block bg-blue-50 text-blue-600 text-[13px] font-bold px-3 py-1 rounded-full font-dm-sans">
-                            {format(customRange.start, 'MMM d')} – {format(customRange.end, 'MMM d, yyyy')}
-                        </span>
-                    </div>
-                )}
-
-                {/* Include Recurring Toggle */}
-                <div className="mt-6 flex items-center justify-between">
-                    <div className="flex flex-col">
-                        <span className="text-[15px] font-bold text-gray-900">Include recurring</span>
-                        {!includeRecurring && hiddenRecurringAmount > 0 && (
-                            <span className="text-xs text-gray-500 mt-0.5">
-                                Recurring excluded · ${hiddenRecurringAmount.toFixed(0)} hidden
+                    {timePeriod === 'Custom' && customRange && (
+                        <div className="mt-3 text-center">
+                            <span className="inline-block bg-blue-50 text-blue-600 text-[13px] font-bold px-3 py-1 rounded-full font-dm-sans">
+                                {format(customRange.start, 'MMM d')} – {format(customRange.end, 'MMM d, yyyy')}
                             </span>
-                        )}
+                        </div>
+                    )}
+
+                    {/* Include Recurring Toggle */}
+                    <div className="mt-6 flex items-center justify-between">
+                        <div className="flex flex-col">
+                            <span className="text-[15px] font-bold text-gray-900">Include recurring</span>
+                            {!includeRecurring && hiddenRecurringAmount > 0 && (
+                                <span className="text-xs text-gray-500 mt-0.5">
+                                    Recurring excluded · ${hiddenRecurringAmount.toFixed(0)} hidden
+                                </span>
+                            )}
+                        </div>
+
+                        <Switch.Root
+                            checked={includeRecurring}
+                            onCheckedChange={setIncludeRecurring}
+                            className={`w-11 h-6 rounded-full relative shadow-inner outline-none transition-colors ${includeRecurring ? 'bg-blue-600' : 'bg-gray-200'
+                                }`}
+                        >
+                            <Switch.Thumb
+                                className={`block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${includeRecurring ? 'translate-x-[22px]' : 'translate-x-0.5'
+                                    } mt-0.5`}
+                            />
+                        </Switch.Root>
                     </div>
 
-                    <Switch.Root
-                        checked={includeRecurring}
-                        onCheckedChange={setIncludeRecurring}
-                        className={`w-11 h-6 rounded-full relative shadow-inner outline-none transition-colors ${includeRecurring ? 'bg-blue-600' : 'bg-gray-200'
-                            }`}
-                    >
-                        <Switch.Thumb
-                            className={`block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ${includeRecurring ? 'translate-x-[22px]' : 'translate-x-0.5'
-                                } mt-0.5`}
+                    {(timePeriod === 'Month' || timePeriod === '3 Months') && (
+                        <MonthNavigator
+                            currentMonth={selectedMonthStart}
+                            onChange={setSelectedMonthStart}
                         />
-                    </Switch.Root>
+                    )}
+
+                    {timePeriod === 'Week' && (
+                        <WeekSelector
+                            selectedWeekStart={selectedWeekStart}
+                            onChange={setSelectedWeekStart}
+                        />
+                    )}
                 </div>
-
-                {(timePeriod === 'Month' || timePeriod === '3 Months') && (
-                    <MonthNavigator
-                        currentMonth={selectedMonthStart}
-                        onChange={setSelectedMonthStart}
-                    />
-                )}
-
-                {timePeriod === 'Week' && (
-                    <WeekSelector
-                        selectedWeekStart={selectedWeekStart}
-                        onChange={setSelectedWeekStart}
-                    />
-                )}
             </div>
 
             {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto px-4 pt-6 pb-32 space-y-4">
-
-                <SummaryCards
-                    transactions={periodTransactions}
-                    dateRange={dateRange}
-                />
-
-                <SpendingChart
-                    transactions={periodTransactions}
-                    dateRange={dateRange}
-                    timePeriod={timePeriod}
-                />
-
-                <CategoryBreakdown
-                    transactions={periodTransactions}
-                    categories={categories}
-                />
-
-                <RecurringVsVariable
-                    transactions={periodTransactions}
-                />
-
-                <TopVendors
-                    transactions={periodTransactions}
-                    categories={categories}
-                />
-
-                <ComparisonChart
-                    transactions={filteredTransactions} // Pass ALL active transactions so it can compute 'previous' period
-                    categories={categories}
-                    dateRange={dateRange}
-                    timePeriod={timePeriod}
-                />
-
-                {periodTransactions.length === 0 && (
-                    <div className="bg-white p-6 rounded-[16px] shadow-sm flex flex-col items-center justify-center min-h-[160px] text-center">
-                        <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mb-3">
-                            <span className="text-xl">📭</span>
+            <div className="flex-1 overflow-y-auto">
+                <div className="app-shell-wide pt-6 pb-32">
+                    <div className="space-y-4 xl:grid xl:grid-cols-12 xl:gap-4 xl:space-y-0">
+                        <div className="xl:col-span-12">
+                            <SummaryCards
+                                transactions={periodTransactions}
+                                dateRange={dateRange}
+                            />
                         </div>
-                        <h3 className="text-sm font-bold text-gray-900 mb-1">No expenses found</h3>
-                        <p className="text-xs text-gray-400 max-w-[200px]">
-                            We couldn't find any transactions for the selected period.
-                        </p>
+
+                        <div className="xl:col-span-7">
+                            <SpendingChart
+                                transactions={periodTransactions}
+                                dateRange={dateRange}
+                                timePeriod={timePeriod}
+                            />
+                        </div>
+
+                        <div className="xl:col-span-5">
+                            <CategoryBreakdown
+                                transactions={periodTransactions}
+                                categories={categories}
+                            />
+                        </div>
+
+                        <div className="xl:col-span-6">
+                            <RecurringVsVariable
+                                transactions={periodTransactions}
+                            />
+                        </div>
+
+                        <div className="xl:col-span-6">
+                            <TopVendors
+                                transactions={periodTransactions}
+                                categories={categories}
+                            />
+                        </div>
+
+                        <div className="xl:col-span-12">
+                            <ComparisonChart
+                                transactions={filteredTransactions} // Pass ALL active transactions so it can compute 'previous' period
+                                categories={categories}
+                                dateRange={dateRange}
+                                timePeriod={timePeriod}
+                            />
+                        </div>
+
+                        {periodTransactions.length === 0 && (
+                            <div className="bg-white p-6 rounded-[16px] shadow-sm flex flex-col items-center justify-center min-h-[160px] text-center xl:col-span-12">
+                                <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mb-3">
+                                    <span className="text-xl">📭</span>
+                                </div>
+                                <h3 className="text-sm font-bold text-gray-900 mb-1">No expenses found</h3>
+                                <p className="text-xs text-gray-400 max-w-[200px]">
+                                    We couldn't find any transactions for the selected period.
+                                </p>
+                            </div>
+                        )}
                     </div>
-                )}
+                </div>
             </div>
             {/* Frozen Footer */}
-            <div className="flex-none bg-white border-t border-gray-100 z-20">
+            <div className="flex-none bg-white border-t border-gray-100 z-20 lg:h-0 lg:border-t-0 lg:bg-transparent">
                 <BottomNav />
             </div>
 

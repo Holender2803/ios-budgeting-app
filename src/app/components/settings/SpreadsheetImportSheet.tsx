@@ -31,8 +31,8 @@ export function SpreadsheetImportSheet({
     <Drawer.Root open={open} onOpenChange={onOpenChange}>
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 bg-black/40 z-50" />
-        <Drawer.Content className="fixed bottom-0 left-0 right-0 z-50 outline-none">
-          <div className="bg-white rounded-t-2xl max-w-lg mx-auto w-full">
+        <Drawer.Content className="app-drawer-frame">
+          <div className="app-drawer-panel">
             <div className="flex justify-center pt-3 pb-2">
               <div className="w-10 h-1 rounded-full bg-gray-300" />
             </div>
@@ -44,7 +44,7 @@ export function SpreadsheetImportSheet({
               </p>
             </div>
 
-            <div className="px-4 pb-8 space-y-3">
+            <div className="px-4 pb-8 space-y-3 overflow-y-auto">
               <input
                 ref={inputRef}
                 type="file"

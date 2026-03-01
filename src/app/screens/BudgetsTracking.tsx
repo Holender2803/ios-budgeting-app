@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { startOfMonth, endOfMonth, parseISO, isWithinInterval, subMonths, format } from 'date-fns';
+import { startOfMonth, endOfMonth, parseISO, isWithinInterval, subMonths, format, isSameMonth } from 'date-fns';
 import { BottomNav } from '../components/BottomNav';
 import { MonthNavigator } from '../components/reports/MonthNavigator';
 import { useExpense } from '../context/ExpenseContext';
@@ -35,6 +35,7 @@ export function BudgetsTracking() {
     const [sheetCategory, setSheetCategory] = useState<Category | null>(null);
     const [sheetSpent, setSheetSpent] = useState(0);
     const [sheetLimit, setSheetLimit] = useState(0);
+    const showInsightCard = isSameMonth(selectedMonthStart, new Date());
 
     // Fetch budgets from Supabase
     useEffect(() => {
@@ -128,11 +129,11 @@ export function BudgetsTracking() {
 
     if (loadingBudgets) {
         return (
-            <div className="h-[100dvh] flex flex-col bg-[#F1F5F9] overflow-hidden relative font-dm-sans">
+            <div className="app-screen-with-nav h-[100dvh] flex flex-col bg-[#F1F5F9] overflow-hidden relative font-dm-sans">
                 <div className="flex-1 flex justify-center items-center">
                     <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full" />
                 </div>
-                <div className="flex-none bg-white border-t border-gray-100 z-20">
+                <div className="flex-none bg-white border-t border-gray-100 z-20 lg:h-0 lg:border-t-0 lg:bg-transparent">
                     <BottomNav />
                 </div>
             </div>
@@ -142,23 +143,25 @@ export function BudgetsTracking() {
     // Empty state - No budgets configured
     if (budgets.length === 0) {
         return (
-            <div className="h-[100dvh] flex flex-col bg-[#F1F5F9] overflow-hidden relative font-dm-sans">
-                <div className="flex-1 overflow-y-auto px-4 pt-6 pb-32 flex flex-col items-center justify-center text-center">
-                    <div className="w-16 h-16 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mb-4">
-                        <Target className="w-8 h-8" />
+            <div className="app-screen-with-nav h-[100dvh] flex flex-col bg-[#F1F5F9] overflow-hidden relative font-dm-sans">
+                <div className="flex-1 overflow-y-auto">
+                    <div className="app-shell-wide pt-6 pb-32 flex flex-col items-center justify-center text-center min-h-full">
+                        <div className="w-16 h-16 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mb-4">
+                            <Target className="w-8 h-8" />
+                        </div>
+                        <h2 className="text-xl font-bold text-gray-900 mb-2">No budgets set yet</h2>
+                        <p className="text-gray-500 text-sm max-w-[250px] mb-8 leading-relaxed">
+                            Set monthly limits to start tracking your spending and stay on top of your finances.
+                        </p>
+                        <button
+                            onClick={() => navigate('/settings/budgets')}
+                            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-full shadow-md active:scale-95 transition-all"
+                        >
+                            Set Up Budgets
+                        </button>
                     </div>
-                    <h2 className="text-xl font-bold text-gray-900 mb-2">No budgets set yet</h2>
-                    <p className="text-gray-500 text-sm max-w-[250px] mb-8 leading-relaxed">
-                        Set monthly limits to start tracking your spending and stay on top of your finances.
-                    </p>
-                    <button
-                        onClick={() => navigate('/settings/budgets')}
-                        className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-full shadow-md active:scale-95 transition-all"
-                    >
-                        Set Up Budgets
-                    </button>
                 </div>
-                <div className="flex-none bg-white border-t border-gray-100 z-20">
+                <div className="flex-none bg-white border-t border-gray-100 z-20 lg:h-0 lg:border-t-0 lg:bg-transparent">
                     <BottomNav />
                 </div>
             </div>
@@ -166,85 +169,99 @@ export function BudgetsTracking() {
     }
 
     return (
-        <div className="h-[100dvh] flex flex-col bg-[#F1F5F9] overflow-hidden relative font-dm-sans">
+        <div className="app-screen-with-nav h-[100dvh] flex flex-col bg-[#F1F5F9] overflow-hidden relative font-dm-sans">
             {/* Sticky Header */}
-            <div className="flex-none bg-white border-b border-gray-100 z-30 relative pt-12 pb-2 px-4 shadow-sm">
-                <MonthNavigator
-                    currentMonth={selectedMonthStart}
-                    onChange={setSelectedMonthStart}
-                />
+            <div className="flex-none bg-white border-b border-gray-100 z-30 relative shadow-sm">
+                <div className="app-shell-wide pt-12 pb-2">
+                    <MonthNavigator
+                        currentMonth={selectedMonthStart}
+                        onChange={setSelectedMonthStart}
+                    />
+                </div>
             </div>
 
             {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 pb-32">
-                <BudgetHeroCard
-                    monthSpent={monthSpent}
-                    totalLimit={totalLimit}
-                    selectedMonthStart={selectedMonthStart}
-                />
+            <div className="flex-1 overflow-y-auto">
+                <div className="app-shell-wide py-6 pb-32">
+                    <div className="space-y-4 lg:grid lg:grid-cols-12 lg:gap-4 lg:space-y-0">
+                        <div className="lg:col-span-12">
+                            <BudgetHeroCard
+                                monthSpent={monthSpent}
+                                totalLimit={totalLimit}
+                                selectedMonthStart={selectedMonthStart}
+                            />
+                        </div>
 
-                <BudgetInsightCard
-                    budgets={budgets}
-                    categories={categories}
-                    spentByCategory={spentByCategory}
-                    selectedMonthStart={selectedMonthStart}
-                />
+                        {showInsightCard && (
+                            <div className="lg:col-span-4">
+                                <BudgetInsightCard
+                                    budgets={budgets}
+                                    categories={categories}
+                                    spentByCategory={spentByCategory}
+                                    selectedMonthStart={selectedMonthStart}
+                                />
+                            </div>
+                        )}
 
-                <BudgetCategoryList
-                    budgets={budgets}
-                    categories={categories}
-                    spentByCategory={spentByCategory}
-                    selectedMonthStart={selectedMonthStart}
-                    onCategoryClick={(category, spent, limit) => {
-                        setSheetCategory(category);
-                        setSheetSpent(spent);
-                        setSheetLimit(limit);
-                        setSheetOpen(true);
-                    }}
-                />
+                        <div className={showInsightCard ? 'lg:col-span-8' : 'lg:col-span-12'}>
+                            <BudgetCategoryList
+                                budgets={budgets}
+                                categories={categories}
+                                spentByCategory={spentByCategory}
+                                selectedMonthStart={selectedMonthStart}
+                                onCategoryClick={(category, spent, limit) => {
+                                    setSheetCategory(category);
+                                    setSheetSpent(spent);
+                                    setSheetLimit(limit);
+                                    setSheetOpen(true);
+                                }}
+                            />
+                        </div>
 
-                {/* Comparison Row */}
-                {previousMonthTotal > 0 && (
-                    <div className="bg-white rounded-[20px] p-4 flex items-center justify-between border border-gray-100 shadow-sm font-dm-sans">
-                        <span className="text-[14px] font-medium text-gray-600">
-                            vs {format(subMonths(selectedMonthStart, 1), 'MMMM')}
-                        </span>
-                        <div className="flex items-center gap-2">
-                            {monthSpent < previousMonthTotal ? (
-                                <div className="flex items-center gap-1.5 text-green-600">
-                                    <span className="text-[14px] font-bold">
-                                        ${Math.round(previousMonthTotal - monthSpent).toLocaleString()} less
-                                    </span>
-                                    <span className="text-[12px]">↓</span>
-                                </div>
-                            ) : monthSpent > previousMonthTotal ? (
-                                <div className="flex items-center gap-1.5 text-red-500">
-                                    <span className="text-[14px] font-bold">
-                                        ${Math.round(monthSpent - previousMonthTotal).toLocaleString()} more
-                                    </span>
-                                    <span className="text-[12px]">↑</span>
-                                </div>
-                            ) : (
-                                <span className="text-[14px] font-bold text-gray-500">
-                                    Same spending
+                        {/* Comparison Row */}
+                        {previousMonthTotal > 0 && (
+                            <div className="bg-white rounded-[20px] p-4 flex items-center justify-between border border-gray-100 shadow-sm font-dm-sans lg:col-span-12">
+                                <span className="text-[14px] font-medium text-gray-600">
+                                    vs {format(subMonths(selectedMonthStart, 1), 'MMMM')}
                                 </span>
-                            )}
+                                <div className="flex items-center gap-2">
+                                    {monthSpent < previousMonthTotal ? (
+                                        <div className="flex items-center gap-1.5 text-green-600">
+                                            <span className="text-[14px] font-bold">
+                                                ${Math.round(previousMonthTotal - monthSpent).toLocaleString()} less
+                                            </span>
+                                            <span className="text-[12px]">↓</span>
+                                        </div>
+                                    ) : monthSpent > previousMonthTotal ? (
+                                        <div className="flex items-center gap-1.5 text-red-500">
+                                            <span className="text-[14px] font-bold">
+                                                ${Math.round(monthSpent - previousMonthTotal).toLocaleString()} more
+                                            </span>
+                                            <span className="text-[12px]">↑</span>
+                                        </div>
+                                    ) : (
+                                        <span className="text-[14px] font-bold text-gray-500">
+                                            Same spending
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="pt-4 pb-8 flex justify-center lg:col-span-12">
+                            <button
+                                onClick={() => navigate('/settings/budgets')}
+                                className="text-[13px] text-gray-500 hover:text-gray-700 font-medium transition-colors"
+                            >
+                                Edit budget limits &rarr;
+                            </button>
                         </div>
                     </div>
-                )}
-
-                <div className="pt-4 pb-8 flex justify-center">
-                    <button
-                        onClick={() => navigate('/settings/budgets')}
-                        className="text-[13px] text-gray-500 hover:text-gray-700 font-medium transition-colors"
-                    >
-                        Edit budget limits &rarr;
-                    </button>
                 </div>
             </div>
 
             {/* Frozen Footer */}
-            <div className="flex-none bg-white border-t border-gray-100 z-20">
+            <div className="flex-none bg-white border-t border-gray-100 z-20 lg:h-0 lg:border-t-0 lg:bg-transparent">
                 <BottomNav />
             </div>
 

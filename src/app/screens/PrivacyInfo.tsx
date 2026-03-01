@@ -67,7 +67,7 @@ export function PrivacyInfo() {
         <div className="h-[100dvh] flex flex-col bg-gray-50">
             {/* Header */}
             <div className="flex-none bg-white border-b border-gray-200">
-                <div className="max-w-lg mx-auto px-4 py-4 flex items-center gap-3">
+                <div className="app-shell-narrow py-4 flex items-center gap-3">
                     <button
                         onClick={() => navigate(-1)}
                         className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
@@ -80,7 +80,7 @@ export function PrivacyInfo() {
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto">
-                <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
+                <div className="app-shell-narrow py-6 space-y-6">
                     {sections.map((section) => (
                         <div key={section.title}>
                             <h3 className="text-[15px] font-semibold text-gray-900 mb-1.5">{section.title}</h3>
