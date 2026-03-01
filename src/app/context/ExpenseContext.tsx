@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { Transaction, Category, VendorRule, Settings, RecurringException } from '../types';
 import { generateDemoData } from '../utils/generateDemoData';
 import { format, addDays, startOfToday, endOfYear, addYears, isBefore, isAfter, parseISO, addWeeks, addMonths } from 'date-fns';
-import { storage } from '../utils/storage';
+import { getStorageScope, storage } from '../utils/storage';
 import { toast } from 'sonner';
 import { ensureUUIDs } from '../utils/uuidMigration';
 import { SyncService } from '../../lib/syncService';
@@ -247,6 +247,20 @@ const DEFAULT_IMPORTED_CATEGORY = {
   group: 'Other',
 } as const;
 
+const LEGACY_LOCAL_STORAGE_KEYS = [
+  'transactions',
+  'categories',
+  'vendorRules',
+  'settings',
+  'recurringExceptions',
+] as const;
+
+const getScopedMetaKey = (baseKey: string, scope: string) => `calendarspent:${baseKey}:${scope}`;
+
+const clearLegacyLocalStorage = () => {
+  LEGACY_LOCAL_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+};
+
 const sanitizeImportedGroup = (group?: string) => {
   if (!group) return DEFAULT_IMPORTED_CATEGORY.group;
   const match = CANONICAL_GROUPS.find((candidate) => candidate.toLowerCase() === group.trim().toLowerCase());
@@ -285,7 +299,8 @@ const buildTransactionSignature = (transaction: Pick<Transaction, 'date' | 'amou
 };
 
 export function ExpenseProvider({ children }: { children: React.ReactNode }) {
-  const { user, supabaseConfigured, syncCalendar } = useAuth();
+  const { user, loading: authLoading, supabaseConfigured, syncCalendar } = useAuth();
+  const storageScope = getStorageScope(user?.id);
   const [isSyncing, setIsSyncing] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
@@ -302,10 +317,10 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     setIncludeRecurringState(value);
     setSettings(prev => {
       const newSettings = { ...prev, includeRecurringInReports: value };
-      storage.set('settings', 'app_settings', newSettings);
+      storage.set('settings', 'app_settings', newSettings, storageScope);
       return newSettings;
     });
-  }, []);
+  }, [storageScope]);
 
   const syncData = React.useCallback(async () => {
     if (!supabaseConfigured || !user) return;
@@ -338,19 +353,32 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHydrated, user?.id, supabaseConfigured]);
 
-  // Load initial data from IndexedDB (with localStorage migration) on mount
+  // Rehydrate local state for the active auth scope.
   useEffect(() => {
-    async function loadData() {
-      // 1. Try to load from IndexedDB
-      let dbTransactions = await storage.getAll<Transaction>('transactions');
-      let dbCategories = await storage.getAll<Category>('categories');
-      let dbRules = await storage.getAll<VendorRule>('vendorRules');
-      let dbSettings = await storage.get<Settings>('settings', 'app_settings');
-      let dbExceptions = await storage.getAll<RecurringException>('recurringExceptions');
+    if (authLoading) return;
 
-      // 2. One-time Migration logic
-      const hasMigrated = localStorage.getItem('indexeddb_migrated');
-      if (!hasMigrated) {
+    let cancelled = false;
+
+    async function loadData() {
+      setIsHydrated(false);
+      setTransactions([]);
+      setCategories(DEFAULT_CATEGORIES);
+      setVendorRules([]);
+      setRecurringExceptions([]);
+      setSettings(DEFAULT_SETTINGS);
+      setSelectedCategoryIds([]);
+      setIncludeRecurringState(false);
+
+      // 1. Try to load from scoped IndexedDB
+      let dbTransactions = await storage.getAll<Transaction>('transactions', storageScope);
+      let dbCategories = await storage.getAll<Category>('categories', storageScope);
+      let dbRules = await storage.getAll<VendorRule>('vendorRules', storageScope);
+      let dbSettings = await storage.get<Settings>('settings', 'app_settings', storageScope);
+      let dbExceptions = await storage.getAll<RecurringException>('recurringExceptions', storageScope);
+
+      // 2. One-time migration from legacy localStorage into guest scope only.
+      const hasMigrated = localStorage.getItem(getScopedMetaKey('indexeddb_migrated', storageScope));
+      if (!user && !hasMigrated) {
         const localTransactions = localStorage.getItem('transactions');
         const localCategories = localStorage.getItem('categories');
         const localRules = localStorage.getItem('vendorRules');
@@ -359,29 +387,29 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
 
         if (localTransactions && dbTransactions.length === 0) {
           dbTransactions = JSON.parse(localTransactions);
-          for (const t of dbTransactions) await storage.set('transactions', t.id, t);
+          for (const t of dbTransactions) await storage.set('transactions', t.id, t, storageScope);
         }
         if (localCategories && dbCategories.length === 0) {
           dbCategories = JSON.parse(localCategories);
-          for (const c of dbCategories) await storage.set('categories', c.id, c);
+          for (const c of dbCategories) await storage.set('categories', c.id, c, storageScope);
         }
         if (localRules && dbRules.length === 0) {
           dbRules = JSON.parse(localRules);
-          for (const r of dbRules) await storage.set('vendorRules', r.id, r);
+          for (const r of dbRules) await storage.set('vendorRules', r.id, r, storageScope);
         }
         if (localSettings && !dbSettings) {
           dbSettings = JSON.parse(localSettings);
-          await storage.set('settings', 'app_settings', dbSettings);
+          await storage.set('settings', 'app_settings', dbSettings, storageScope);
         }
         if (localExceptions && dbExceptions.length === 0) {
           dbExceptions = JSON.parse(localExceptions);
-          for (const e of dbExceptions) await storage.set('recurringExceptions', `${e.ruleId}-${e.date}`, e);
+          for (const e of dbExceptions) await storage.set('recurringExceptions', `${e.ruleId}-${e.date}`, e, storageScope);
         }
-        localStorage.setItem('indexeddb_migrated', 'true');
+        localStorage.setItem(getScopedMetaKey('indexeddb_migrated', storageScope), 'true');
       }
 
       // 3. Pipeline initialization
-      const shouldSeedDemoData = dbTransactions.length === 0 && !dbSettings?.disableDemoData;
+      const shouldSeedDemoData = !user && dbTransactions.length === 0 && !dbSettings?.disableDemoData;
       let pipelineTransactions = dbTransactions.length > 0 ? dbTransactions : (shouldSeedDemoData ? generateDemoData() : []);
       let pipelineCategories = dbCategories.length > 0 ? dbCategories : DEFAULT_CATEGORIES;
       let pipelineRules = dbRules;
@@ -416,7 +444,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       }
 
       // 4. Run Legacy Migration 
-      const migrationVersion = localStorage.getItem('category_schema_v1');
+      const migrationVersion = localStorage.getItem(getScopedMetaKey('category_schema_v1', storageScope));
       const hasLegacy = pipelineCategories.some(c => Object.keys(LEGACY_MAPPING).includes(normalizeLabel(c.name)));
 
       if (!migrationVersion || hasLegacy) {
@@ -431,7 +459,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
           pipelineTransactions = migratedTrans;
           pipelineRules = migratedRules;
           needsSave = true;
-          localStorage.setItem('category_schema_v1', 'true');
+          localStorage.setItem(getScopedMetaKey('category_schema_v1', storageScope), 'true');
         }
       }
 
@@ -440,13 +468,13 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       if (uuidMigrationResult.changed) {
         needsSave = true;
         for (const [oldId, _] of uuidMigrationResult.uuidMap.entries()) {
-          await storage.remove('transactions', oldId);
-          await storage.remove('categories', oldId);
-          await storage.remove('vendorRules', oldId);
+          await storage.remove('transactions', oldId, storageScope);
+          await storage.remove('categories', oldId, storageScope);
+          await storage.remove('vendorRules', oldId, storageScope);
         }
         for (const e of pipelineExceptions) {
           if (uuidMigrationResult.uuidMap.has(e.ruleId)) {
-            await storage.remove('recurringExceptions', `${e.ruleId}-${e.date}`);
+            await storage.remove('recurringExceptions', `${e.ruleId}-${e.date}`, storageScope);
           }
         }
         pipelineCategories = uuidMigrationResult.categories;
@@ -456,6 +484,8 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       }
 
       // 6. Final State Commit
+      if (cancelled) return;
+
       setCategories(pipelineCategories);
       setTransactions(pipelineTransactions);
       setVendorRules(pipelineRules);
@@ -474,17 +504,21 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       // 7. Persist pipeline if mutated
       // If we loaded demo data, it also counts as needsSave.
       if (needsSave || dbTransactions.length === 0) {
-        for (const c of pipelineCategories) await storage.set('categories', c.id, c);
-        for (const t of pipelineTransactions) await storage.set('transactions', t.id, t);
-        for (const r of pipelineRules) await storage.set('vendorRules', r.id, r);
-        for (const e of pipelineExceptions) await storage.set('recurringExceptions', `${e.ruleId}-${e.date}`, e);
+        for (const c of pipelineCategories) await storage.set('categories', c.id, c, storageScope);
+        for (const t of pipelineTransactions) await storage.set('transactions', t.id, t, storageScope);
+        for (const r of pipelineRules) await storage.set('vendorRules', r.id, r, storageScope);
+        for (const e of pipelineExceptions) await storage.set('recurringExceptions', `${e.ruleId}-${e.date}`, e, storageScope);
       }
 
+      if (cancelled) return;
       setIsHydrated(true);
     }
 
     loadData();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, storageScope, user]);
 
   // Helpers for expansion
   const getSuggestedCategory = (vendor: string) => {
@@ -608,39 +642,39 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     // Clear and rewrite (minimal implementation for now)
     const sync = async () => {
       // Transactions
-      for (const t of transactions) await storage.set('transactions', t.id, t);
+      for (const t of transactions) await storage.set('transactions', t.id, t, storageScope);
     };
     sync();
-  }, [transactions, isHydrated]);
+  }, [transactions, isHydrated, storageScope]);
 
   useEffect(() => {
     if (!isHydrated) return;
     const sync = async () => {
-      for (const c of categories) await storage.set('categories', c.id, c);
+      for (const c of categories) await storage.set('categories', c.id, c, storageScope);
     };
     sync();
-  }, [categories, isHydrated]);
+  }, [categories, isHydrated, storageScope]);
 
   useEffect(() => {
     if (!isHydrated) return;
     const sync = async () => {
-      for (const r of vendorRules) await storage.set('vendorRules', r.id, r);
+      for (const r of vendorRules) await storage.set('vendorRules', r.id, r, storageScope);
     };
     sync();
-  }, [vendorRules, isHydrated]);
+  }, [vendorRules, isHydrated, storageScope]);
 
   useEffect(() => {
     if (!isHydrated) return;
-    storage.set('settings', 'app_settings', settings);
-  }, [settings, isHydrated]);
+    storage.set('settings', 'app_settings', settings, storageScope);
+  }, [settings, isHydrated, storageScope]);
 
   useEffect(() => {
     if (!isHydrated) return;
     const sync = async () => {
-      for (const e of recurringExceptions) await storage.set('recurringExceptions', `${e.ruleId}-${e.date}`, e);
+      for (const e of recurringExceptions) await storage.set('recurringExceptions', `${e.ruleId}-${e.date}`, e, storageScope);
     };
     sync();
-  }, [recurringExceptions, isHydrated]);
+  }, [recurringExceptions, isHydrated, storageScope]);
 
   useEffect(() => {
     if (!import.meta.env.DEV || !isHydrated || devVerificationLoggedRef.current) return;
@@ -677,7 +711,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       updatedAt: Date.now(),
     };
     setTransactions((prev) => [...prev, newTransaction]);
-    await storage.set('transactions', newTransaction.id, newTransaction);
+    await storage.set('transactions', newTransaction.id, newTransaction, storageScope);
   };
 
   const updateTransaction = async (id: string, updates: Partial<Transaction>) => {
@@ -687,7 +721,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     );
     const existing = transactions.find(t => t.id === id);
     if (existing) {
-      await storage.set('transactions', id, { ...existing, ...updates, updatedAt: now });
+      await storage.set('transactions', id, { ...existing, ...updates, updatedAt: now }, storageScope);
     }
   };
 
@@ -698,7 +732,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     const exactMatch = transactions.find(t => t.id === id);
     if (exactMatch) {
       setTransactions((prev) => prev.map((t) => (t.id === id ? { ...t, deletedAt: now, updatedAt: now } : t)));
-      await storage.set('transactions', id, { ...exactMatch, deletedAt: now, updatedAt: now });
+      await storage.set('transactions', id, { ...exactMatch, deletedAt: now, updatedAt: now }, storageScope);
       return;
     }
 
@@ -722,7 +756,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       if (exactMatch) {
         if (!exactMatch.isRecurring || recurringOption === 'all') {
           setTransactions((prev) => prev.map((t) => (t.id === id ? { ...t, deletedAt: now, updatedAt: now } : t)));
-          await storage.set('transactions', id, { ...exactMatch, deletedAt: now, updatedAt: now });
+          await storage.set('transactions', id, { ...exactMatch, deletedAt: now, updatedAt: now }, storageScope);
         } else if (recurringOption === 'future') {
           const yesterday = format(addDays(new Date(), -1), 'yyyy-MM-dd');
           await updateTransaction(id, { endedAt: yesterday, isActive: false });
@@ -745,7 +779,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
           const rule = currentTransactions.find(t => t.id === ruleId);
           if (rule) {
             setTransactions((prev) => prev.map((t) => (t.id === ruleId ? { ...t, deletedAt: now, updatedAt: now } : t)));
-            await storage.set('transactions', ruleId, { ...rule, deletedAt: now, updatedAt: now });
+            await storage.set('transactions', ruleId, { ...rule, deletedAt: now, updatedAt: now }, storageScope);
           }
         }
       }
@@ -780,7 +814,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       updatedAt: Date.now(),
     };
     setCategories((prev) => [...prev, newCategory]);
-    await storage.set('categories', newCategory.id, newCategory);
+    await storage.set('categories', newCategory.id, newCategory, storageScope);
   };
 
   const updateCategory = async (id: string, updates: Partial<Category>) => {
@@ -793,7 +827,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     setCategories((prev) =>
       prev.map((c) => (c.id === id ? { ...c, ...updates, updatedAt: now } : c))
     );
-    await storage.set('categories', id, { ...existing, ...updates, updatedAt: now });
+    await storage.set('categories', id, { ...existing, ...updates, updatedAt: now }, storageScope);
   };
 
   const deleteCategory = (id: string) => {
@@ -820,23 +854,23 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     // 2. Persist to Storage
     const removeOperations = async () => {
       // Remap Transactions
-      const allTransactions = await storage.getAll<Transaction>('transactions');
+      const allTransactions = await storage.getAll<Transaction>('transactions', storageScope);
       const affectedTrans = allTransactions.filter(t => t.category === id);
       for (const t of affectedTrans) {
-        await storage.set('transactions', t.id, { ...t, category: fallbackId, updatedAt: now });
+        await storage.set('transactions', t.id, { ...t, category: fallbackId, updatedAt: now }, storageScope);
       }
 
       // Remap Vendor Rules
-      const allRules = await storage.getAll<VendorRule>('vendorRules');
+      const allRules = await storage.getAll<VendorRule>('vendorRules', storageScope);
       const affectedRules = allRules.filter(r => r.categoryId === id);
       for (const r of affectedRules) {
-        await storage.set('vendorRules', r.id, { ...r, categoryId: fallbackId, updatedAt: now });
+        await storage.set('vendorRules', r.id, { ...r, categoryId: fallbackId, updatedAt: now }, storageScope);
       }
 
       // Soft Delete Category
       const existing = categories.find(c => c.id === id);
       if (existing) {
-        await storage.set('categories', id, { ...existing, deletedAt: now, updatedAt: now });
+        await storage.set('categories', id, { ...existing, deletedAt: now, updatedAt: now }, storageScope);
       }
     };
     removeOperations();
@@ -853,7 +887,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       updatedAt: Date.now(),
     };
     setVendorRules((prev) => [...prev, newRule]);
-    await storage.set('vendorRules', newRule.id, newRule);
+    await storage.set('vendorRules', newRule.id, newRule, storageScope);
   };
 
   const deleteVendorRule = async (id: string) => {
@@ -861,7 +895,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     setVendorRules((prev) => prev.map((r) => r.id === id ? { ...r, deletedAt: now, updatedAt: now } : r));
     const existing = vendorRules.find(r => r.id === id);
     if (existing) {
-      await storage.set('vendorRules', id, { ...existing, deletedAt: now, updatedAt: now });
+      await storage.set('vendorRules', id, { ...existing, deletedAt: now, updatedAt: now }, storageScope);
     }
   };
 
@@ -934,7 +968,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       ...prev.filter(e => e.id !== id),
       newException
     ]);
-    await storage.set('recurringExceptions', id, newException);
+    await storage.set('recurringExceptions', id, newException, storageScope);
   };
 
   const unskipOccurrence = async (ruleId: string, date: string) => {
@@ -944,7 +978,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     const existing = recurringExceptions.find(e => e.id === id);
     if (existing) {
       const updated = { ...existing, deletedAt: now, updatedAt: now };
-      await storage.set('recurringExceptions', id, updated);
+      await storage.set('recurringExceptions', id, updated, storageScope);
     }
   };
 
@@ -1014,14 +1048,10 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Clear all existing data from DB
-      await storage.clearAll();
+      await storage.clearScope(storageScope);
 
       // Also clear legacy localStorage keys just in case
-      localStorage.removeItem('transactions');
-      localStorage.removeItem('categories');
-      localStorage.removeItem('vendorRules');
-      localStorage.removeItem('settings');
-      localStorage.removeItem('recurringExceptions');
+      clearLegacyLocalStorage();
 
       const restoredTransactions = parsed.expenses || [];
       const restoredCategories = parsed.categories || DEFAULT_CATEGORIES;
@@ -1040,6 +1070,7 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       setVendorRules(reconciledRules);
       setSettings(restoredSettings);
       setRecurringExceptions(restoredExceptions);
+      setIncludeRecurringState(restoredSettings.includeRecurringInReports ?? false);
 
       if (restoredSettings.defaultCategoryFilter) {
         setSelectedCategoryIds(restoredSettings.defaultCategoryFilter);
@@ -1204,11 +1235,11 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
     setTransactions((prev) => [...prev, ...createdRecurring, ...createdExpenses]);
 
     for (const category of createdCategories) {
-      await storage.set('categories', category.id, category);
+      await storage.set('categories', category.id, category, storageScope);
     }
 
     for (const transaction of [...createdRecurring, ...createdExpenses]) {
-      await storage.set('transactions', transaction.id, transaction);
+      await storage.set('transactions', transaction.id, transaction, storageScope);
     }
 
     const warnings = [...data.warnings];
@@ -1267,14 +1298,10 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       }
 
       // ── 2. Wipe local storage ─────────────────────────────────────────────
-      await storage.clearAll();
-      localStorage.removeItem('transactions');
-      localStorage.removeItem('categories');
-      localStorage.removeItem('vendorRules');
-      localStorage.removeItem('settings');
-      localStorage.removeItem('recurringExceptions');
-      localStorage.removeItem('indexeddb_migrated');
-      localStorage.removeItem('category_schema_v1');
+      await storage.clearScope(storageScope);
+      clearLegacyLocalStorage();
+      localStorage.removeItem(getScopedMetaKey('indexeddb_migrated', storageScope));
+      localStorage.removeItem(getScopedMetaKey('category_schema_v1', storageScope));
 
       const freshSettings: Settings = {
         ...DEFAULT_SETTINGS,
@@ -1286,9 +1313,9 @@ export function ExpenseProvider({ children }: { children: React.ReactNode }) {
       };
 
       for (const category of DEFAULT_CATEGORIES) {
-        await storage.set('categories', category.id, category);
+        await storage.set('categories', category.id, category, storageScope);
       }
-      await storage.set('settings', 'app_settings', freshSettings);
+      await storage.set('settings', 'app_settings', freshSettings, storageScope);
 
       // ── 3. Reset React state ──────────────────────────────────────────────
       setTransactions([]);
